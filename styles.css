@@ -666,6 +666,38 @@ main {
 .guru-card-executed { background: var(--mint); color: var(--card); }
 .guru-card-rejected, .guru-card-failed { background: var(--card); color: var(--ink-2); opacity: .7; }
 .guru-card-approved { background: var(--card); border-style: dashed; }   /* отправка в процессе */
+.guru-card-queued   { background: #DCE8F5; }                              /* в листе ожидания */
+.guru-card-queued .guru-card-meta { background: var(--blue); color: var(--card); }
+
+/* Лист ожидания: аккаунты с лимитом + очередь с ETA */
+.guru-queue {
+  margin: 0 10px 8px;
+  background: var(--card); color: var(--ink);
+  border: 3px solid var(--ink); box-shadow: var(--sh-md);
+  font-family: var(--font-ui);
+}
+.guru-queue-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; cursor: pointer;
+  font-family: var(--font-h); font-weight: 700; font-size: 13px;
+  background: var(--blue); color: var(--card);
+}
+.guru-queue.collapsed .guru-queue-body { display: none; }
+.guru-queue-body { padding: 6px 10px 8px; max-height: 40vh; overflow-y: auto; }
+.guru-queue-acc {
+  font-size: 12px; padding: 6px 8px; margin-bottom: 6px;
+  background: rgba(91,137,197,.12); border: 1px solid var(--ink);
+}
+.guru-queue-warn { color: var(--red); }
+.guru-queue-row {
+  display: grid; grid-template-columns: 34px 1fr auto 28px 28px; gap: 6px; align-items: center;
+  padding: 4px 2px; font-size: 12px; border-bottom: 1px dashed rgba(26,20,17,.2);
+}
+.guru-queue-row:last-child { border-bottom: 0; }
+.guru-queue-pos { font-family: var(--font-h); font-weight: 700; color: var(--blue); }
+.guru-queue-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.guru-queue-eta { color: var(--ink-2); white-space: nowrap; }
+.guru-queue-btn { padding: 2px 0 !important; min-width: 0 !important; font-size: 12px; line-height: 1; }
 .guru-card-head { display: flex; justify-content: space-between; align-items: center; }
 .guru-card-title {
   font-family: var(--font-ui); font-weight: 600; font-size: 13px;

@@ -2132,20 +2132,28 @@ const screens = {
       return `<div class="screen"><div class="empty"><div class="empty-ico" data-pix="clock"></div><div class="empty-title">Загружаю Guru</div></div></div>`;
     }
     const pending = actions.filter(a => a.status === 'pending');
+    const queued = actions.filter(a => a.status === 'queued');
+    const queueMeta = (a) => '⏳ в очереди' + (a.queue_pos ? ` #${a.queue_pos}` : '') + (a.eta_label ? ` · ${a.eta_label}` : '');
     const draftHTML = (a) => `
       <div class="guru-card guru-card-${escape(a.status)}" data-act-id="${a.id}">
         <div class="guru-card-head">
           <div class="guru-card-title">${a.trigger === 'incoming_reply' ? '📨 Ответ лиду:' : '✎ Черновик для:'} <b>${escape(a.target_label || a.target_username || a.target_phone || '?')}</b></div>
-          <div class="guru-card-meta">${a.status === 'approved' ? '⏳ отправляется' : escape(a.status) + (a.trigger === 'incoming_reply' ? (a.auto ? ' · авто' : ' · ждёт апрува') : '')}</div>
+          <div class="guru-card-meta">${a.status === 'approved' ? '⏳ отправляется' : a.status === 'queued' ? escape(queueMeta(a)) : escape(a.status) + (a.trigger === 'incoming_reply' ? (a.auto ? ' · авто' : ' · ждёт апрува') : '')}</div>
         </div>
         ${a.intent ? `<div class="guru-card-intent">${a.trigger === 'incoming_reply' ? '<span class="muted small">Входящее:</span> ' : ''}«${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
         ${a.asset_id ? `<div class="guru-card-attach">📎 приложен файл #${a.asset_id} — уйдёт вместе с текстом</div>` : ''}
-        <textarea class="guru-draft" id="guru-draft-${a.id}" rows="3" ${a.status !== 'pending' ? 'disabled' : ''}>${escape(a.draft_text || '')}</textarea>
+        <textarea class="guru-draft" id="guru-draft-${a.id}" rows="3" ${(a.status !== 'pending' && a.status !== 'queued') ? 'disabled' : ''}>${escape(a.draft_text || '')}</textarea>
         ${a.status === 'pending' ? `
           <div class="guru-actions">
-            <button class="btn primary" data-action="guru-approve" data-id="${a.id}" title="Отправить черновик от твоего имени лиду">✓ Approve & Send</button>
+            <button class="btn primary" data-action="guru-approve" data-id="${a.id}" title="Одобрить: сообщение встанет в лист ожидания и уйдёт по лимиту аккаунта">✓ Approve → в очередь</button>
             <button class="btn" data-action="guru-edit" data-id="${a.id}" title="Сохранить правки текста (без отправки)">Сохранить правки</button>
             <button class="btn ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик — не отправлять">Отклонить</button>
+          </div>` : ''}
+        ${a.status === 'queued' ? `
+          <div class="guru-actions">
+            <button class="btn" data-action="guru-edit" data-id="${a.id}" title="Сохранить правки: уйдёт уже исправленный текст">Сохранить правки</button>
+            <button class="btn" data-action="guru-unqueue" data-id="${a.id}" title="Вернуть в черновики, из очереди убрать">↩ В черновики</button>
+            <button class="btn ghost" data-action="guru-reject" data-id="${a.id}" title="Убрать из очереди и отклонить">Отклонить</button>
           </div>` : ''}
         ${a.status === 'approved' ? `
           <div class="guru-card-attach">⏳ отправляю${a.asset_id ? ' — файл заливается в Telegram, это может занять до минуты' : '…'}</div>` : ''}
@@ -2169,21 +2177,51 @@ const screens = {
     // Раньше фильтр был только по pending: approve заставлял карточку исчезнуть,
     // а failed не показывался вообще — ошибку было негде увидеть.
     const standaloneLive = actions
-      .filter(a => a.status === 'pending' || a.status === 'approved' || a.status === 'failed')
+      .filter(a => a.status === 'pending' || a.status === 'queued' || a.status === 'approved' || a.status === 'failed')
       .filter(a => !msgs.some(m => (m.tool_calls||[]).some(tc => tc.action_id === a.id)))
       .sort((a, b) => a.id - b.id);   // старые сверху, свежие снизу — под auto-scroll
     const settings = st?.settings || { default_mode: 'admin_approved', conv_counts: {}, modes: ['admin_approved','full_access','off'] };
     const modeShort = ({admin_approved:'DRAFT', full_access:'AUTO', off:'OFF'}[settings.default_mode] || '?');
     const modeColor = ({admin_approved:'gold', full_access:'red', off:'ink'}[settings.default_mode] || 'ink');
+    const q = st?.queue;
+    let queueOpen = true;
+    try { queueOpen = localStorage.getItem('guru_queue_collapsed') !== '1'; } catch {}
+    const accLine = (acc) => {
+      const win = acc.schedule ? `${acc.schedule.days} ${acc.schedule.time_from}–${acc.schedule.time_to}` : 'без окна';
+      const state = acc.status !== 'active' ? `<b class="guru-queue-warn">${escape(acc.status)}</b>`
+        : acc.remaining_today === 0 ? '<b class="guru-queue-warn">лимит на сегодня выбран</b>'
+        : !acc.in_window_now ? 'вне окна' : 'шлёт';
+      return `<div class="guru-queue-acc">
+        <b>@${escape(acc.username || acc.phone || acc.account_id)}</b> · сегодня ${acc.sent_today}/${acc.limit_today} · ${escape(win)} · пауза ${Math.round(acc.pause_min/60)}–${Math.round(acc.pause_max/60)} мин · ${state}${acc.next_eta_label ? ` · след. ${escape(acc.next_eta_label)}` : ''}
+      </div>`;
+    };
+    const rowLine = (it) => `<div class="guru-queue-row" data-act-id="${it.id}">
+        <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
+        <span class="guru-queue-who">${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}</span>
+        <span class="guru-queue-eta">${escape(it.eta_label || '')}</span>
+        <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
+        <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
+      </div>`;
+    const queueHTML = q && (q.total > 0 || (q.accounts||[]).length) ? `
+      <div class="guru-queue ${queueOpen ? '' : 'collapsed'}" id="guru-queue">
+        <div class="guru-queue-head" data-action="toggle-guru-queue" title="Свернуть/развернуть лист ожидания">
+          <span>⏳ Лист ожидания · ${q.total}</span><span class="guru-queue-chev">${queueOpen ? '▾' : '▸'}</span>
+        </div>
+        <div class="guru-queue-body">
+          ${(q.accounts||[]).map(accLine).join('')}
+          ${q.total ? (q.items||[]).map(rowLine).join('') : '<div class="muted small" style="padding:6px 2px">очередь пуста, апрувни черновик и он встанет сюда</div>'}
+        </div>
+      </div>` : '';
     return `
     <div class="screen guru-screen">
       <div class="head-row guru-head" id="guru-head">
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
-          <span class="muted small">${pending.length} pending</span>
+          <span class="muted small">${pending.length} pending${queued.length ? ` · ${queued.length} в очереди` : ''}</span>
         </div>
       </div>
+      ${queueHTML}
       <div class="guru-log" id="guru-log">
         ${msgs.length === 0 && actions.length === 0 ? `
           <div class="empty"><div class="empty-ico" data-pix="ninja"></div>
@@ -2664,7 +2702,7 @@ let _guruHash = '';
 function _hashGuru(h) {
   // Хешируем минимально-достаточный набор полей: id и status у actions, id у messages.
   const m = (h.messages || []).map(x => x.id).join(',');
-  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}`).join(',');
+  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}:${x.queue_pos||''}:${x.eta_label||''}`).join(',');
   return `${m}|${a}`;
 }
 
@@ -2684,17 +2722,19 @@ async function loadGuru(silent=false) {
     } catch {}
   }
   try {
-    const [h, settings] = await Promise.all([
+    const [h, settings, queue] = await Promise.all([
       API.guru.history(60),
       API.guru.settings().catch(() => null),
+      API.guru.queue().catch(() => null),
     ]);
-    const newHash = _hashGuru(h) + '|' + (settings?.default_mode || '');
+    const qSig = queue ? `${queue.total}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}` : '';
+    const newHash = _hashGuru(h) + '|' + (settings?.default_mode || '') + '|' + qSig;
     if (silent && newHash === _guruHash) return;   // ничего не изменилось — не дёргаем DOM
     _guruHash = newHash;
     const draft = document.getElementById('guru-input')?.value || '';
     const focused = document.activeElement?.id;
     const caret = focused === 'guru-input' ? document.activeElement.selectionStart : null;
-    render('guru', { messages: h.messages, actions: h.actions, settings, _draft: draft });
+    render('guru', { messages: h.messages, actions: h.actions, settings, queue, _draft: draft });
     try {
       if (localStorage.getItem('guru_head_collapsed') === '1') {
         document.getElementById('guru-head')?.classList.add('head-collapsed');
@@ -2765,11 +2805,20 @@ async function guruApprove(id) {
 
   // Бэкенд ставит action в очередь и отвечает сразу: заливка видео в Telegram идёт
   // до минуты, и держать ради неё HTTP-запрос через туннель нельзя — рвётся.
+  let r;
   try {
-    await API.guru.approve(id);
+    r = await API.guru.approve(id);
   } catch (e) {
     _done();
     toast(`Не отправилось: ${(e.message || '').replace(/^\d+\s+/, '')}`);
+    loadGuru(true);
+    return;
+  }
+
+  // TG-сообщение встало в лист ожидания: уйдёт по лимиту/окну аккаунта, ждать нечего.
+  if (r && r.status === 'queued') {
+    _done();
+    toast(`✓ В очереди${r.queue_pos ? ` #${r.queue_pos}` : ''}${r.eta_label ? ` · ${r.eta_label}` : ''}`);
     loadGuru(true);
     return;
   }
@@ -2853,6 +2902,10 @@ const cleanErr = (e) => (e?.message || '').replace(/^\d+\s+/, '') || 'ошибк
 
 async function guruReject(id) {
   try { await API.guru.reject(id); loadGuru(true); }
+  catch (e) { toast(`Ошибка: ${e.message}`); }
+}
+async function guruUnqueue(id) {
+  try { await API.guru.unqueue(id); toast('↩ Вернул в черновики'); loadGuru(true); }
   catch (e) { toast(`Ошибка: ${e.message}`); }
 }
 async function guruEdit(id) {
@@ -3817,6 +3870,16 @@ async function handleAction(action, el, e) {
     case 'guru-approve': guruApprove(parseInt(el.dataset.id, 10)); break;
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
+    case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
+    case 'toggle-guru-queue': {
+      const box = document.getElementById('guru-queue');
+      if (!box) break;
+      const collapsed = box.classList.toggle('collapsed');
+      try { localStorage.setItem('guru_queue_collapsed', collapsed ? '1' : '0'); } catch {}
+      const chev = box.querySelector('.guru-queue-chev');
+      if (chev) chev.textContent = collapsed ? '▸' : '▾';
+      break;
+    }
 
     // Assets (файлы Guru) — as-file-pick обрабатывается в change listener
     case 'open-bot-for-asset': {
