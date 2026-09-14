@@ -540,6 +540,51 @@ function closeFab() {
   document.getElementById('acc-fab-backdrop')?.classList.remove('show');
 }
 
+// ===== Inbox: общие хелперы списка =====
+// Инбокс теперь отдаёт ВСЕ диалоги, включая те, где мы написали, а нам не ответили.
+// Старый бэкенд полей не знает — тогда в списке лежали только ответившие, поэтому дефолт true.
+const _hasIncoming = (c) =>
+  c.has_incoming !== undefined ? !!c.has_incoming
+  : (c.last_direction ? c.last_direction === 'in' : true);
+
+// Прочитано, но молчит: ответа не было, наше последнее ушло и его открыли
+const _readSilent = (c) =>
+  !_hasIncoming(c) && (c.out_unread || 0) === 0 && c.last_direction === 'out';
+
+// Фильтр + поиск одним местом: используется и шаблоном, и «выбрать всё» в bulk-режиме
+function _inboxVisible(convs, st) {
+  const filter = st?.filter || 'all';
+  const q = (st?.q || '').toLowerCase().trim();
+  let out = (convs || []).filter(c => {
+    if (filter === 'all')        return true;
+    if (filter === 'unread')     return !!c.unread;
+    if (filter === 'no_reply')   return !_hasIncoming(c);
+    if (filter === 'read_quiet') return _readSilent(c);
+    return (c.lead_status || 'Без статуса') === filter;
+  });
+  if (q) out = out.filter(c =>
+    (c.lead_name || '').toLowerCase().includes(q)
+    || (c.lead_username || '').toLowerCase().includes(q)
+    || (c.last_text || '').toLowerCase().includes(q));
+  return out;
+}
+
+// Те же три состояния для конкретного исходящего сообщения в треде.
+// delivered === undefined — старый бэкенд поля не отдавал, там всё считалось доставленным.
+function _msgTicks(m) {
+  if (m.read_at) return `<span class="conv-ticks read" title="Прочитано ${escape(fmtTime(m.read_at))}">✓✓</span>`;
+  if (m.delivered === false) return '<span class="conv-ticks pending" title="Ещё не подтверждено">…</span>';
+  return '<span class="conv-ticks" title="Доставлено">✓</span>';
+}
+
+// Галочки последнего ИСХОДЯЩЕГО в строке списка: … не подтверждено / ✓ доставлено / ✓✓ прочитано
+function _rowTicks(c) {
+  if (c.last_direction !== 'out') return '';
+  if (c.last_out_read_at)  return `<span class="conv-ticks read" title="Прочитано ${escape(fmtTime(c.last_out_read_at))}">✓✓</span>`;
+  if (c.last_out_delivered) return '<span class="conv-ticks" title="Доставлено">✓</span>';
+  return '<span class="conv-ticks pending" title="Ещё не подтверждено">…</span>';
+}
+
 // ===== Screens =====
 const screens = {
 
@@ -1419,40 +1464,43 @@ const screens = {
   inbox: (st) => {
     const convs = st?.conversations ?? null;
     const filter = st?.filter || 'all';
+    // folders === null → бэкенд про папки не знает (старая версия), полосу не рисуем
+    const folders  = Array.isArray(st?.folders) ? st.folders : null;
+    const folderId = st?.folder_id || null;
+    const folderStrip = folders === null ? '' : `
+        <div class="folder-strip">
+          <div class="stage-chip ${!folderId ? 'active' : ''}" data-inbox-folder="">Все</div>
+          ${folders.map(f => `
+            <div class="stage-chip ${folderId === f.id ? 'active' : ''}" data-inbox-folder="${f.id}" title="${escape(f.name)}${f.total ? ` · ${f.total} диалогов` : ''}">${escape(f.name)}${f.unread ? ` · ${f.unread}` : ''}</div>
+          `).join('')}
+          <div class="stage-chip" data-inbox-folder="new" title="Создать папку">＋ папка</div>
+        </div>`;
     if (convs === null) return `
       <div class="screen"><div class="head-row"><h2>Inbox</h2></div>
       <div class="empty"><div class="empty-ico" data-pix="clock"></div><div class="empty-title">Загружаю</div></div></div>`;
     if (convs.length === 0) return `
       <div class="screen"><div class="head-row"><h2>Inbox</h2></div>
+      ${folderStrip}
       <div class="empty"><div class="empty-ico" data-pix="broadcast"></div>
-        <div class="empty-title">Пока никто не ответил</div>
-        <div>Запустите кампанию — ответы со всех ваших аккаунтов будут падать сюда.</div>
+        <div class="empty-title">${folderId ? 'В этой папке пусто' : 'Диалогов пока нет'}</div>
+        <div>${folderId ? 'Закинь переписки сюда через «Выбрать → 📁 В папку».' : 'Запусти кампанию — переписки со всех твоих аккаунтов будут падать сюда.'}</div>
       </div></div>`;
 
-    // Считаем по статусам
-    const counts = { unread: 0 };
+    // Считаем по статусам + по состоянию ответа
+    const counts = { unread: 0, no_reply: 0, read_quiet: 0 };
     convs.forEach(c => {
       if (c.unread) counts.unread++;
+      if (!_hasIncoming(c)) counts.no_reply++;
+      if (_readSilent(c)) counts.read_quiet++;
       const s = c.lead_status || 'Без статуса';
       counts[s] = (counts[s] || 0) + 1;
-    });
-
-    const filtered = convs.filter(c => {
-      if (filter === 'all') return true;
-      if (filter === 'unread') return c.unread;
-      return (c.lead_status || 'Без статуса') === filter;
     });
 
     const statusOrder = ['Trial Activated','Testnet','Objection handling','Initial Contact','Winback','New','Без статуса'];
     const presentStatuses = statusOrder.filter(s => counts[s]);
 
     const q = (st?.q || '').toLowerCase().trim();
-    let display = filtered;
-    if (q) display = display.filter(c => {
-      return (c.lead_name || '').toLowerCase().includes(q)
-          || (c.lead_username || '').toLowerCase().includes(q)
-          || (c.last_text || '').toLowerCase().includes(q);
-    });
+    const display = _inboxVisible(convs, st);
     const selectMode = !!st?.select_mode;
     const selected = new Set(st?.selected || []);
     const allOnPage = display.map(c => c.id);
@@ -1472,9 +1520,12 @@ const screens = {
         <div class="search-bar">
           <input id="ib-search" type="search" placeholder="Поиск по имени, username, тексту..." value="${escape(q)}" oninput="window.__ibSearch(this.value)">
         </div>
+        ${folderStrip}
         <div class="stage-strip">
           <div class="stage-chip ${filter==='all'?'active':''}" data-inbox-filter="all">Все · ${convs.length}</div>
           ${counts.unread ? `<div class="stage-chip ${filter==='unread'?'active':''}" data-inbox-filter="unread">● Непрочитанные · ${counts.unread}</div>` : ''}
+          ${counts.no_reply ? `<div class="stage-chip ${filter==='no_reply'?'active':''}" data-inbox-filter="no_reply" title="Мы написали, ответа не было">Без ответа · ${counts.no_reply}</div>` : ''}
+          ${counts.read_quiet ? `<div class="stage-chip ${filter==='read_quiet'?'active':''}" data-inbox-filter="read_quiet" title="Наше последнее сообщение открыли, но не ответили">Прочитано, молчит · ${counts.read_quiet}</div>` : ''}
           ${presentStatuses.map(s => `
             <div class="stage-chip ${filter===s?'active':''}" data-inbox-filter="${escape(s)}">${escape(s)} · ${counts[s]}</div>
           `).join('')}
@@ -1495,16 +1546,17 @@ const screens = {
                   <div class="lead-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escape(c.lead_name || c.lead_username || '?')}${snoozed?' 💤':''}</div>
                   <div class="conv-time">${prettyTime(c.last_message_at)}</div>
                 </div>
-                <div class="conv-text" title="${escape(c.last_text||'')}">${escape(c.last_text || '—').slice(0, 70)}</div>
+                <div class="conv-text" title="${escape(c.last_text||'')}">${_rowTicks(c)}${c.last_direction === 'out' ? 'Ты: ' : ''}${escape((c.last_text || '—').slice(0, 70))}</div>
                 ${tagsHtml || c.lead_status ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${c.lead_status?`<span class="${statusPill}">${escape(c.lead_status)}</span>`:''}${tagsHtml}</div>` : ''}
               </div>
             </div>
           `;}).join('')
         }
         ${selectMode && selected.size > 0 ? `
-          <div style="position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));z-index:30;padding:10px 16px;background:var(--card);border-top:3px solid var(--ink);max-width:540px;margin:0 auto;display:flex;gap:8px">
+          <div class="ib-bulk-bar" style="position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));z-index:30;padding:10px 16px;background:var(--card);border-top:3px solid var(--ink);max-width:540px;margin:0 auto;display:flex;gap:8px">
             <button class="btn primary" style="flex:1" data-action="ib-bulk-reply">↩ Ответить ${selected.size}</button>
-            <button class="btn" style="flex:1" data-action="ib-bulk-delete">🗑 ${selected.size}</button>
+            <button class="btn" style="flex:1" data-action="ib-bulk-folder" title="Разложить выбранное по папкам">📁 В папку</button>
+            <button class="btn" style="flex:0 0 auto" data-action="ib-bulk-delete">🗑 ${selected.size}</button>
           </div>
         ` : ''}
       </div>`;
@@ -1538,6 +1590,7 @@ const screens = {
             <div style="font-size:12px;color:var(--text-muted)">${escape(subtitle || 'через CRM')} · <span data-action="conv-bot-mode" data-id="${st.conv_id}" data-current="${st.bot_mode||'auto'}" title="Бот-автоответчик: 🤖 auto = бот сам отвечает на FAQ, 👤 human = только человек, ⏸ pause = бот молчит. Клик переключает." style="cursor:pointer;color:${(st.bot_mode==='paused')?'#ef4444':(st.bot_mode==='human_only'?'#f59e0b':'#16a34a')};font-weight:500">${st.bot_mode==='paused'?'⏸ pause':st.bot_mode==='human_only'?'👤 human':'🤖 auto'}</span> · <span data-action="conv-guru-mode" data-id="${st.conv_id}" data-current="${st.guru_mode||'admin_approved'}" title="Guru-агент: ★ approve = Guru генерит черновик ответа, ты апруваешь · ★ auto = Guru сам отправляет (full-access) · ★ off = Guru молчит. Клик переключает." style="cursor:pointer;color:${(st.guru_mode==='off')?'#94a3b8':(st.guru_mode==='full_access'?'#dc2626':'#7c3aed')};font-weight:500">★ ${st.guru_mode==='off'?'off':st.guru_mode==='full_access'?'auto':'approve'}</span></div>
           </div>
           <button class="icon-btn" data-action="conv-calendly" data-id="${st.conv_id}" title="Прислать Calendly-ссылку" data-pix="calendar"></button>
+          <button class="icon-btn" data-action="conv-folders" data-id="${st.conv_id}" title="Папки диалога" style="font-size:15px">📁</button>
           <button class="icon-btn" data-action="conv-snooze" data-id="${st.conv_id}" title="Snooze (отложить)" data-pix="snooze"></button>
           <button class="icon-btn" data-action="conv-stoplist" data-tg="${st.lead_tg_id || ''}" title="В стоп-лист" data-pix="ban"></button>
           <button class="icon-btn" data-action="conv-delete" data-id="${st.conv_id}" title="Удалить переписку" data-pix="trash" style="color:var(--red)"></button>
@@ -1553,7 +1606,7 @@ const screens = {
               <div class="conv-row ${out ? 'out' : 'in'}">
                 <div class="conv-bubble ${out ? 'out' : 'in'} ${media ? 'media' : ''}">
                   ${media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
-                  <div class="conv-time">${fmtTime(m.sent_at)}${out ? (m.read_at ? ' <span class="conv-ticks read" title="Прочитано">✓✓</span>' : ' <span class="conv-ticks" title="Доставлено">✓</span>') : ''}</div>
+                  <div class="conv-time">${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
                 </div>
               </div>`;
           }).join('')}
@@ -3140,27 +3193,99 @@ async function guruAutosave(ta) {
 }
 
 let _inboxHash = '';
-function _hashInbox(convs) {
-  return convs.map(c => `${c.id}:${c.unread?1:0}:${c.last_message_at}:${(c.last_text||'').length}`).join(',');
+function _hashInbox(convs, folders) {
+  const conv = convs.map(c => `${c.id}:${c.unread?1:0}:${c.last_message_at}:${(c.last_text||'').length}`
+    + `:${c.last_direction||''}:${c.last_out_delivered?1:0}:${c.last_out_read_at||''}:${(c.folder_ids||[]).join('.')}`).join(',');
+  const fld = (folders || []).map(f => `${f.id}:${f.name}:${f.unread||0}:${f.total||0}`).join(',');
+  return `${conv}|${fld}`;
+}
+
+// Активная папка живёт между сессиями
+function _inboxFolderId() {
+  try { const v = parseInt(localStorage.getItem('inbox_folder') || '', 10); return v > 0 ? v : null; }
+  catch { return null; }
+}
+function _setInboxFolderId(id) {
+  try { id ? localStorage.setItem('inbox_folder', String(id)) : localStorage.removeItem('inbox_folder'); } catch {}
+}
+
+// Счётчики папок дёргаем не чаще раза в минуту: они нужны только для цифры на чипе.
+// _foldersCache === null — бэкенд папок не знает, полоса не рисуется вовсе.
+let _foldersCache = null, _foldersAt = 0;
+async function loadFolders(force=false) {
+  if (!force && _foldersAt && Date.now() - _foldersAt < 60000) return _foldersCache;
+  try {
+    const f = await API.inbox.folders();
+    _foldersCache = Array.isArray(f) ? f : [];
+  } catch { if (_foldersCache === null) _foldersCache = null; }
+  _foldersAt = Date.now();
+  return _foldersCache;
 }
 
 async function loadInbox(silent=false) {
   if (silent && currentScreen !== 'inbox') return;
-  if (!silent) render('inbox', { conversations: null });
+  const folderId = _inboxFolderId();
+  if (!silent) render('inbox', { conversations: null, folder_id: folderId });
   try {
-    const conversations = await API.inbox.list();
-    const newHash = _hashInbox(conversations);
+    const [conversations, folders] = await Promise.all([
+      API.inbox.list(folderId),
+      loadFolders(),
+    ]);
+    // Сохранённую папку удалили (с другого устройства): иначе застряли бы в пустом списке
+    if (folderId && Array.isArray(folders) && !folders.some(f => f.id === folderId)) {
+      _setInboxFolderId(null);
+      _inboxHash = '';
+      return loadInbox(silent);
+    }
+    const newHash = _hashInbox(conversations, folders);
     if (silent && newHash === _inboxHash) return;
     _inboxHash = newHash;
     const filter = screenState.inbox?.filter || 'all';
     if (silent && currentScreen !== 'inbox') return;   // пока летел ответ, юзер ушёл
-    render('inbox', { conversations, filter });
+    render('inbox', { conversations, filter, folders, folder_id: folderId });
   } catch (e) {
     if (!silent) {
-      render('inbox', { conversations: [] });
+      render('inbox', { conversations: [], folder_id: folderId });
       toast(`Не удалось загрузить inbox: ${e.message}`);
     }
   }
+}
+
+// Уход из диалога обратно в список: свой поллинг диалога гасим, инбоксовый возвращаем
+function backToInbox() {
+  loadInbox();
+  startPoll(() => { loadInbox(true); refreshBadges(); }, 15000);
+}
+
+let _convHash = '';
+function _hashConv(msgs) {
+  return `${msgs.length}|` + msgs.map(m => `${m.id}:${m.read_at||''}:${m.delivered===false?0:1}`).join(',');
+}
+
+// Поллинг открытого диалога: перерисовываем только когда что-то реально поменялось,
+// иначе слетал бы недописанный ответ и позиция прокрутки.
+async function pollConv(cid) {
+  if (currentScreen !== 'conv' || screenState.conv?.conv_id !== cid) return;
+  let messages;
+  try { messages = await API.inbox.messages(cid); } catch { return; }
+  if (currentScreen !== 'conv' || screenState.conv?.conv_id !== cid) return;
+  const h = _hashConv(messages);
+  if (h === _convHash) return;
+  _convHash = h;
+  const ml = document.getElementById('msg-list');
+  const atBottom = ml ? (ml.scrollHeight - ml.scrollTop - ml.clientHeight) < 40 : true;
+  const keepTop = ml ? ml.scrollTop : 0;
+  const inpOld = document.getElementById('reply-input');
+  const draft = inpOld?.value || '';
+  const focused = document.activeElement === inpOld;
+  const caret = focused ? inpOld.selectionStart : null;
+  render('conv', { ...screenState.conv, messages });
+  const ml2 = document.getElementById('msg-list');
+  if (ml2) ml2.scrollTop = atBottom ? ml2.scrollHeight : keepTop;
+  const inp = document.getElementById('reply-input');
+  if (inp && draft) inp.value = draft;
+  // Пришло прочтение, пока печатаешь ответ: курсор остаётся в поле, где был
+  if (inp && focused) { inp.focus(); if (caret != null) try { inp.setSelectionRange(caret, caret); } catch {} }
 }
 
 async function openConv(cid) {
@@ -3174,12 +3299,97 @@ async function openConv(cid) {
       subtitle: conv?.account_phone ? `через ${conv.account_phone}` : '',
       bot_mode: conv?.bot_mode || 'auto',
       guru_mode: conv?.guru_mode || 'admin_approved',
+      folder_ids: conv?.folder_ids || [],
     });
+    _convHash = _hashConv(messages);
+    startPoll(() => pollConv(cid), 12000);   // заодно снимает поллинг инбокса — таймер один
     requestAnimationFrame(() => {
       const ml = document.getElementById('msg-list');
       if (ml) ml.scrollTop = ml.scrollHeight;
     });
   } catch (e) { toast(`Ошибка: ${e.message}`); }
+}
+
+// ===== Inbox: папки =====
+// Свой лист, независимый от guru-модалки: у неё свой id и своё закрытие
+function inboxSheet(title, bodyHtml) {
+  closeInboxSheet();
+  const wrap = document.createElement('div');
+  wrap.id = 'inbox-sheet';
+  wrap.innerHTML = `
+    <div class="modal-backdrop" data-action="ib-sheet-close">
+      <div class="modal-sheet">
+        <div class="modal-title">${escape(title)}</div>
+        ${bodyHtml}
+        <button class="btn ghost full" style="margin-top:8px" data-action="ib-sheet-close">Закрыть</button>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+}
+function closeInboxSheet() { document.getElementById('inbox-sheet')?.remove(); }
+
+// Где лежит актуальный список папок диалога: на экране conv — в его state, иначе в списке
+function _folderIdsOf(cid) {
+  if (screenState.conv?.conv_id === cid && Array.isArray(screenState.conv.folder_ids)) return screenState.conv.folder_ids;
+  return (screenState.inbox?.conversations || []).find(x => x.id === cid)?.folder_ids || [];
+}
+
+// Локально двигаем folder_ids, чтобы шапка диалога и список не ждали перезагрузки
+function _applyFolderLocal(convIds, fid, add) {
+  const upd = (arr) => { const s = new Set(arr || []); add ? s.add(fid) : s.delete(fid); return Array.from(s); };
+  const list = screenState.inbox?.conversations || [];
+  convIds.forEach(id => {
+    const c = list.find(x => x.id === id);
+    if (c) c.folder_ids = upd(c.folder_ids);
+    if (screenState.conv?.conv_id === id) screenState.conv.folder_ids = upd(screenState.conv.folder_ids);
+  });
+}
+
+// Чип полосы папок: '' — все, 'new' — создать, id — выбрать; повторный клик по активной = меню папки
+async function pickInboxFolder(raw) {
+  if (raw === 'new') {
+    const name = (prompt_('Название папки:', '') || '').trim();
+    if (!name) return;
+    try {
+      const f = await API.inbox.folderCreate(name);
+      _foldersAt = 0; _inboxHash = '';
+      _setInboxFolderId(f.id);
+      loadInbox();
+    } catch (e) { toast(`Не создалась: ${cleanErr(e)}`); }
+    return;
+  }
+  const id = raw ? parseInt(raw, 10) : null;
+  if (id && id === _inboxFolderId()) { openFolderMenu(id); return; }
+  _setInboxFolderId(id);
+  _inboxHash = '';
+  loadInbox();
+}
+
+// Меню активной папки: переименовать / удалить
+function openFolderMenu(id) {
+  const f = (_foldersCache || []).find(x => x.id === id);
+  if (!f) return;
+  inboxSheet(f.name, `
+    <div class="muted small" style="margin:4px 0 12px">${f.total || 0} диалогов${f.unread ? ` · ${f.unread} непрочитанных` : ''}</div>
+    <button class="modal-row" data-action="ib-folder-rename" data-id="${id}">Переименовать</button>
+    <button class="modal-row" data-action="ib-folder-delete" data-id="${id}" style="color:var(--red)">Удалить папку</button>
+  `);
+}
+
+// Лист «разложить по папкам»: тогл на каждой папке (все выбранные уже внутри → убрать, иначе добавить)
+async function openFolderAssign(convIds) {
+  const folders = await loadFolders();
+  if (folders === null) { toast('Папки пока недоступны'); return; }
+  const rows = folders.map(f => {
+    const on = convIds.length > 0 && convIds.every(id => _folderIdsOf(id).includes(f.id));
+    return `<button class="modal-row ${on ? 'modal-row-active' : ''}" data-action="ib-folder-toggle" data-fid="${f.id}" data-convs="${convIds.join(',')}">
+      ${on ? '✓ ' : '<span style="opacity:.35">＋ </span>'}${escape(f.name)}
+    </button>`;
+  }).join('');
+  inboxSheet(convIds.length > 1 ? `В папку · ${convIds.length} диалогов` : 'Папки диалога', `
+    ${rows || '<div class="muted small" style="margin:6px 0 10px">Папок ещё нет</div>'}
+    <button class="modal-row" data-action="ib-folder-new" data-convs="${convIds.join(',')}"><b>＋ новая папка</b></button>
+  `);
 }
 
 // ===== Loaders: tasks/kb/analytics/stoplist/profile =====
@@ -3717,15 +3927,7 @@ async function handleAction(action, el, e) {
     }
     case 'ib-select-all': {
       const st = screenState.inbox;
-      const filter = st.filter || 'all';
-      const q = (st.q || '').toLowerCase().trim();
-      let display = (st.conversations || []);
-      if (filter !== 'all') display = display.filter(c => filter === 'unread' ? c.unread : (c.lead_status || 'Без статуса') === filter);
-      if (q) display = display.filter(c =>
-        (c.lead_name||'').toLowerCase().includes(q)
-        || (c.lead_username||'').toLowerCase().includes(q)
-        || (c.last_text||'').toLowerCase().includes(q));
-      const ids = display.map(c => c.id);
+      const ids = _inboxVisible(st.conversations, st).map(c => c.id);
       const sel = new Set(st.selected || []);
       const allIn = ids.every(id => sel.has(id));
       if (allIn) ids.forEach(id => sel.delete(id));
@@ -3733,6 +3935,75 @@ async function handleAction(action, el, e) {
       render('inbox', { ...st, selected: Array.from(sel) });
       break;
     }
+    // Inbox: папки
+    case 'ib-sheet-close': {
+      // Висит и на backdrop, и на кнопке «Закрыть» — клик сквозь ребёнка листа не закрывает
+      if (e && el.classList.contains('modal-backdrop') && e.target !== el) break;
+      closeInboxSheet();
+      break;
+    }
+    case 'ib-bulk-folder': {
+      const ids = screenState.inbox?.selected || [];
+      if (!ids.length) return;
+      openFolderAssign(ids);
+      break;
+    }
+    case 'conv-folders': openFolderAssign([parseInt(el.dataset.id, 10)]); break;
+    case 'ib-folder-toggle': {
+      const fid = parseInt(el.dataset.fid, 10);
+      const ids = (el.dataset.convs || '').split(',').filter(Boolean).map(Number);
+      if (!ids.length) break;
+      const allIn = ids.every(id => _folderIdsOf(id).includes(fid));
+      try {
+        const r = await API.inbox.folderAssign(fid, ids, allIn ? 'remove' : 'add');
+        _applyFolderLocal(ids, fid, !allIn);
+        _foldersAt = 0;
+        toast(allIn ? `Убрано из папки: ${r?.changed ?? ids.length}` : `В папку: ${r?.changed ?? ids.length}`);
+        closeInboxSheet();
+        if (currentScreen === 'inbox') { _inboxHash = ''; loadInbox(); }
+      } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+      break;
+    }
+    case 'ib-folder-new': {
+      const ids = (el.dataset.convs || '').split(',').filter(Boolean).map(Number);
+      const name = (prompt_('Название папки:', '') || '').trim();
+      if (!name) break;
+      try {
+        const f = await API.inbox.folderCreate(name);
+        if (ids.length) { await API.inbox.folderAssign(f.id, ids, 'add'); _applyFolderLocal(ids, f.id, true); }
+        _foldersAt = 0;
+        toast(`Папка «${name}»${ids.length ? ` · ${ids.length}` : ''}`);
+        closeInboxSheet();
+        if (currentScreen === 'inbox') { _inboxHash = ''; loadInbox(); }
+      } catch (e) { toast(`Не создалась: ${cleanErr(e)}`); }
+      break;
+    }
+    case 'ib-folder-rename': {
+      const id = parseInt(el.dataset.id, 10);
+      const cur = (_foldersCache || []).find(f => f.id === id);
+      const name = (prompt_('Новое имя папки:', cur?.name || '') || '').trim();
+      if (!name || name === cur?.name) { closeInboxSheet(); break; }
+      try {
+        await API.inbox.folderRename(id, name);
+        _foldersAt = 0; _inboxHash = '';
+        closeInboxSheet(); loadInbox();
+      } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+      break;
+    }
+    case 'ib-folder-delete': {
+      const id = parseInt(el.dataset.id, 10);
+      const cur = (_foldersCache || []).find(f => f.id === id);
+      const yes = await confirm_(`Удалить папку «${cur?.name || id}»? Переписки останутся в инбоксе.`);
+      if (!yes) break;
+      try {
+        await API.inbox.folderDelete(id);
+        _foldersAt = 0; _inboxHash = '';
+        if (_inboxFolderId() === id) _setInboxFolderId(null);
+        closeInboxSheet(); loadInbox();
+      } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+      break;
+    }
+
     case 'ib-bulk-delete': {
       const st = screenState.inbox;
       const ids = st.selected || [];
@@ -3752,14 +4023,14 @@ async function handleAction(action, el, e) {
       const cid = parseInt(el.dataset.id, 10);
       const yes = await confirm_('Удалить эту переписку из CRM-инбокса?');
       if (!yes) return;
-      try { await API.inbox.remove(cid); toast('Удалено'); loadInbox(); }
+      try { await API.inbox.remove(cid); toast('Удалено'); backToInbox(); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
 
     // Inbox
     case 'open-conv': openConv(parseInt(el.dataset.id, 10)); break;
-    case 'conv-back': loadInbox(); break;
+    case 'conv-back': backToInbox(); break;
     case 'send-reply': {
       const text = document.getElementById('reply-input').value.trim();
       const cid = parseInt(el.dataset.id, 10);
@@ -4304,7 +4575,7 @@ async function handleAction(action, el, e) {
       if (!choice) return;
       const days = ({1:1, 2:3, 3:7, 4:14})[parseInt(choice,10)] || 3;
       const until = new Date(Date.now() + days*24*3600*1000).toISOString();
-      try { await API.inbox.snooze(cid, until); toast(`💤 На ${days} дн.`); loadInbox(); }
+      try { await API.inbox.snooze(cid, until); toast(`💤 На ${days} дн.`); backToInbox(); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
@@ -4438,8 +4709,7 @@ document.addEventListener('click', (e) => {
     const name = tab.dataset.screen;
     stopPoll();
     if (name === 'inbox') {
-      loadInbox();
-      startPoll(() => { loadInbox(true); refreshBadges(); }, 15000);
+      backToInbox();
     } else if (name === 'outreach') { render('outreach'); loadOutreachSummaries(); }
     else if (name === 'dashboard') { loadDashboard(); startPoll(() => { loadDashboard(true); refreshBadges(); }, 30000); }
     else if (name === 'guru') { loadGuru(); startPoll(() => loadGuru(true), 8000); }
@@ -4468,6 +4738,10 @@ document.addEventListener('click', (e) => {
       render('inbox', { ...screenState.inbox, filter: stage.dataset.inboxFilter });
       return;
     }
+    if (stage.dataset.inboxFolder !== undefined) {
+      pickInboxFolder(stage.dataset.inboxFolder);
+      return;
+    }
   }
   const actEl = e.target.closest('[data-action]');
   const act = actEl?.dataset.action;
@@ -4490,12 +4764,18 @@ document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.gur
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.guru-draft')) guruAutosave(e.target); });
 
 function goBack() {
+  const fromConv = currentScreen === 'conv';
   if (navStack.length) {
     const prev = navStack.pop();
     _navBack = true;
     render(prev.name, prev.state);
   } else {
     render('dashboard');
+  }
+  // Уходим из диалога — его 12-секундный поллинг больше не нужен, а инбоксовый надо вернуть
+  if (fromConv) {
+    stopPoll();
+    if (currentScreen === 'inbox') startPoll(() => { loadInbox(true); refreshBadges(); }, 15000);
   }
 }
 if (tg) {

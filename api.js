@@ -38,7 +38,8 @@ const API = {
   },
 
   inbox: {
-    list:      ()             => API.req('GET',    '/api/inbox/conversations'),
+    // folderId необязателен: без него — весь инбокс (как раньше), с ним — серверная фильтрация по папке
+    list:      (folderId)     => API.req('GET',    `/api/inbox/conversations${folderId ? `?folder_id=${folderId}` : ''}`),
     messages:  (cid)          => API.req('GET',    `/api/inbox/conversations/${cid}/messages`),
     reply:     (cid, text)    => API.req('POST',   `/api/inbox/conversations/${cid}/reply`, { text }),
     replyMedia:(cid, file, caption='') => {
@@ -58,6 +59,12 @@ const API = {
     bulkReply: (ids, text)    => API.req('POST',   '/api/inbox/conversations/bulk_reply', { conv_ids: ids, text }),
     setBotMode:(cid, mode)    => API.req('POST',   `/api/inbox/conversations/${cid}/bot_mode`, { mode }),
     listAll:   ()             => API.req('GET',    '/api/inbox/conversations?include_snoozed=true'),
+    // Папки инбокса: диалог может лежать в нескольких сразу
+    folders:      ()                 => API.req('GET',    '/api/inbox/folders'),
+    folderCreate: (name)             => API.req('POST',   '/api/inbox/folders', { name }),
+    folderRename: (id, name)         => API.req('PATCH',  `/api/inbox/folders/${id}`, { name }),
+    folderDelete: (id)               => API.req('DELETE', `/api/inbox/folders/${id}`),
+    folderAssign: (id, conv_ids, op) => API.req('POST',   `/api/inbox/folders/${id}/assign`, { conv_ids, op }),
   },
 
   lists: {
