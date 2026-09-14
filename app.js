@@ -804,11 +804,11 @@ const screens = {
             <input id="ad-warmup" type="checkbox" ${a.warmup_enabled?'checked':''} style="width:20px;height:20px">
             <div style="flex:1">
               <div style="font-weight:500">Включить warmup</div>
-              <div style="font-size:12px;color:var(--text-muted)">Каждые 30 мин этот акк будет обмениваться короткими сообщениями с другими вашими warmup-аккаунтами. Telegram воспринимает это как живой юзер — снижает риск попасть в спам.</div>
+              <div style="font-size:12px;color:var(--text-muted)">Раз в 25–40 мин аккаунт читает свои каналы, ставит реакцию на пост в канале и изредка (~15%) вступает в @telegram, @durov, @bitcoin, @cryptocurrency и др. Работает и с одним аккаунтом. При ≥2 акках с warmup они дополнительно переписываются между собой.</div>
             </div>
           </label>
           <div style="font-size:11px;color:var(--text-muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-            ⚠️ Нужно минимум 2 акка с включённым warmup — иначе общаться не с кем.
+            ⚠️ Прогрев не зависит от паузы рассылки в Guru: пока галка стоит и воркеры сервера включены, аккаунт действует в Telegram.
           </div>
         </div>
 
@@ -2133,7 +2133,15 @@ const screens = {
     }
     const pending = actions.filter(a => a.status === 'pending');
     const queued = actions.filter(a => a.status === 'queued');
-    const queueMeta = (a) => '⏳ в очереди' + (a.queue_pos ? ` #${a.queue_pos}` : '') + (a.eta_label ? ` · ${a.eta_label}` : '');
+    // Рассылка на паузе (guru_outreach_running=false): ETA гипотетическое — вместо него «ждёт запуска».
+    // Флаг берём из листа ожидания (он же рисует кнопку), queue_running карточки — запасной.
+    const queuePaused = (a) => (st?.queue && typeof st.queue.running === 'boolean') ? !st.queue.running : a.queue_running === false;
+    // Воркер очереди на сервере не крутится (BITOK_NO_WORKERS=1): строго false, чтобы старый бэкенд без поля не пугал.
+    const queueDead = (a) => (st?.queue && typeof st.queue.worker_alive === 'boolean') ? !st.queue.worker_alive : a.queue_worker_alive === false;
+    const queueMeta = (a) => '⏳ в очереди' + (a.queue_pos ? ` #${a.queue_pos}` : '')
+      + (queuePaused(a) ? (a.eta || !a.eta_label ? ' · ждёт запуска' : ` · ${a.eta_label}`)
+        : queueDead(a) ? ' · воркер не запущен'
+        : (a.eta_label ? ` · ${a.eta_label}` : ''));
     const draftHTML = (a) => `
       <div class="guru-card guru-card-${escape(a.status)}" data-act-id="${a.id}">
         <div class="guru-card-head">
@@ -2205,32 +2213,64 @@ const screens = {
     const modeShort = ({admin_approved:'DRAFT', full_access:'AUTO', off:'OFF'}[settings.default_mode] || '?');
     const modeColor = ({admin_approved:'gold', full_access:'red', off:'ink'}[settings.default_mode] || 'ink');
     const q = st?.queue;
+    // Выключатель рассылки: running=true — воркер шлёт, иначе очередь стоит (ETA «как если бы шло»).
+    const qRunning = q?.running === true;
+    const qPaused = q?.running === false;
+    const qDead = q?.worker_alive === false;
     let queueOpen = true;
     try { queueOpen = localStorage.getItem('guru_queue_collapsed') !== '1'; } catch {}
     const accLine = (acc) => {
       const win = acc.schedule ? `${acc.schedule.days} ${acc.schedule.time_from}–${acc.schedule.time_to}` : 'без окна';
       const state = acc.status !== 'active' ? `<b class="guru-queue-warn">${escape(acc.status)}</b>`
+        : qPaused ? '<b class="guru-queue-paused">рассылка на паузе</b>'
+        : qDead ? '<b class="guru-queue-warn">воркер очереди выключен на сервере</b>'
         : acc.remaining_today === 0 ? '<b class="guru-queue-warn">лимит на сегодня выбран</b>'
         : !acc.in_window_now ? 'вне окна' : 'шлёт';
       return `<div class="guru-queue-acc">
-        <b>@${escape(acc.username || acc.phone || acc.account_id)}</b> · сегодня ${acc.sent_today}/${acc.limit_today} · ${escape(win)} · пауза ${Math.round(acc.pause_min/60)}–${Math.round(acc.pause_max/60)} мин · ${state}${acc.next_eta_label ? ` · след. ${escape(acc.next_eta_label)}` : ''}
+        <b>@${escape(acc.username || acc.phone || acc.account_id)}</b> · сегодня ${acc.sent_today}/${acc.limit_today} · ${escape(win)} · пауза ${Math.round(acc.pause_min/60)}–${Math.round(acc.pause_max/60)} мин · ${state}${!qPaused && acc.next_eta_label ? ` · след. ${escape(acc.next_eta_label)}` : ''}
       </div>`;
     };
+    // На паузе вместо гипотетического ETA — «ждёт запуска»; реальные проблемы (нет слота/аккаунта) оставляем.
+    const rowEta = (it) => qPaused && (it.eta || !it.eta_label) ? 'ждёт запуска'
+      : qDead && it.eta ? 'воркер не запущен' : (it.eta_label || '');
+    // Что ушло за 24 ч: карточки списков после отправки из ленты пропадают, здесь их видно.
+    // Подпись «за 24 ч», не «сегодня»: sent_today аккаунта считается по календарному дню и с ручными отправками.
+    const sentRecent = q?.sent_recent || [];
+    const sentLine = (x) => {
+      const inner = `<span class="guru-queue-sent-who">✓ ${escape(x.target_label || '?')}</span><span class="guru-queue-eta">${escape(fmtTime(x.executed_at))}</span>`;
+      return x.conv_id != null
+        ? `<button class="guru-queue-sent-row" data-action="open-conv" data-id="${x.conv_id}" title="Открыть диалог">${inner}</button>`
+        : `<div class="guru-queue-sent-row">${inner}</div>`;
+    };
+    const sentHTML = sentRecent.length ? `
+          <div class="guru-queue-sent">
+            <div class="guru-queue-sent-title">✓ ушло за 24 ч · ${sentRecent.length}${sentRecent.length >= 20 ? '+' : ''}</div>
+            ${sentRecent.map(sentLine).join('')}
+          </div>` : '';
     const rowLine = (it) => `<div class="guru-queue-row" data-act-id="${it.id}">
         <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
         <span class="guru-queue-who">${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}</span>
-        <span class="guru-queue-eta">${escape(it.eta_label || '')}</span>
+        <span class="guru-queue-eta">${escape(rowEta(it))}</span>
         <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
         <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
       </div>`;
-    const queueHTML = q && (q.total > 0 || (q.accounts||[]).length) ? `
+    const queueHTML = q && (q.total > 0 || (q.accounts||[]).length || sentRecent.length) ? `
       <div class="guru-queue ${queueOpen ? '' : 'collapsed'}" id="guru-queue">
         <div class="guru-queue-head" data-action="toggle-guru-queue" title="Свернуть/развернуть лист ожидания">
-          <span>⏳ Лист ожидания · ${q.total}</span><span class="guru-queue-chev">${queueOpen ? '▾' : '▸'}</span>
+          <span>⏳ Лист ожидания · ${q.total}</span>
+          <span class="guru-queue-head-r">
+            ${qDead ? '<span class="guru-queue-state dead" title="Воркер очереди на сервере не запущен: ничего не уйдёт">⚠ воркер не запущен</span>' : ''}
+            <span class="guru-queue-state ${qRunning ? 'on' : 'off'}">${qRunning ? (qDead ? '▶ включена' : '▶ идёт') : '⏸ пауза'}</span>
+            <span class="guru-queue-chev">${queueOpen ? '▾' : '▸'}</span>
+          </span>
         </div>
         <div class="guru-queue-body">
+          <button class="btn guru-queue-run ${qRunning ? 'stop' : 'start'}" data-action="guru-queue-run" data-run="${qRunning ? '0' : '1'}"
+            title="${qRunning ? 'Остановить рассылку: очередь сохранится, новые сообщения не уйдут' : 'Запустить рассылку: очередь пойдёт по лимиту, окну и паузе аккаунта'}">${qRunning ? '⏸ Пауза рассылки' : '▶ Запустить рассылку'}</button>
+          ${qDead ? '<div class="guru-queue-deadnote">⚠ Воркер рассылки на сервере сейчас не работает, сообщения не уйдут. Запуск сохранится и сработает, как только воркер поднимется.</div>' : ''}
           ${(q.accounts||[]).map(accLine).join('')}
           ${q.total ? (q.items||[]).map(rowLine).join('') : '<div class="muted small" style="padding:6px 2px">очередь пуста, апрувни черновик и он встанет сюда</div>'}
+          ${sentHTML}
         </div>
       </div>` : '';
     return `
@@ -2239,7 +2279,7 @@ const screens = {
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
-          <span class="muted small">${pending.length} pending${queued.length ? ` · ${queued.length} в очереди` : ''}</span>
+          <span class="muted small">${pending.length} pending${queued.length ? ` · ${queued.length} в очереди` : ''}${qPaused && (queued.length || q.total) ? ' · ⏸ пауза' : ''}</span>
         </div>
       </div>
       ${queueHTML}
@@ -2728,9 +2768,43 @@ function _hashGuru(h) {
   return `${m}|${a}`;
 }
 
+// Порядок загрузок Guru: запоздавший ответ (поллинг стартовал до POST) не должен перетирать
+// более свежий рендер — иначе после «▶ Запустить» панель откатывалась бы к старому running.
+let _guruLoadSeq = 0;
+let _guruRenderedSeq = 0;
+
+/** Перерисовать Guru, сохранив набранный текст, фокус/каретку и прокрутку ленты. */
+function _renderGuruKeepInput(patch, scrollBottom) {
+  const inpOld = document.getElementById('guru-input');
+  const draft = inpOld?.value || '';
+  const focused = document.activeElement?.id === 'guru-input';
+  const caret = focused ? inpOld.selectionStart : null;
+  const logTop = document.getElementById('guru-log')?.scrollTop;
+  render('guru', { ...patch, _draft: draft });
+  try {
+    if (localStorage.getItem('guru_head_collapsed') === '1') {
+      document.getElementById('guru-head')?.classList.add('head-collapsed');
+    }
+  } catch {}
+  requestAnimationFrame(() => {
+    const log = document.getElementById('guru-log');
+    if (log) log.scrollTop = scrollBottom ? log.scrollHeight : (logTop ?? log.scrollHeight);
+    const inp = document.getElementById('guru-input');
+    if (inp && draft) {
+      inp.value = draft;
+      if (focused) {
+        inp.focus();
+        if (caret != null) inp.setSelectionRange(caret, caret);
+      }
+    }
+  });
+}
+
 async function loadGuru(silent=false) {
   if (silent && currentScreen !== 'guru') return;
+  const seq = ++_guruLoadSeq;
   if (!silent) {
+    _guruHash = '';   // полный заход: следующий ответ обязан перерисовать экран
     if (currentScreen !== 'guru') render('guru', { messages: null, actions: [] });
   }
   // Сначала проверим тариф — Guru только для платных
@@ -2749,32 +2823,15 @@ async function loadGuru(silent=false) {
       API.guru.settings().catch(() => null),
       API.guru.queue().catch(() => null),
     ]);
-    const qSig = queue ? `${queue.total}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}` : '';
+    if (seq < _guruRenderedSeq) return;   // уже отрисовано более свежее состояние
+    const qSig = queue ? `${queue.running === true ? 'run' : 'stop'}:${queue.worker_alive === false ? 'dead' : 'alive'}:${queue.total}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}:${(queue.sent_recent||[]).map(x => x.id).join(',')}` : '';
     const newHash = _hashGuru(h) + '|' + (settings?.default_mode || '') + '|' + qSig;
     if (silent && newHash === _guruHash) return;   // ничего не изменилось — не дёргаем DOM
     _guruHash = newHash;
-    const draft = document.getElementById('guru-input')?.value || '';
-    const focused = document.activeElement?.id;
-    const caret = focused === 'guru-input' ? document.activeElement.selectionStart : null;
-    render('guru', { messages: h.messages, actions: h.actions, settings, queue, _draft: draft });
-    try {
-      if (localStorage.getItem('guru_head_collapsed') === '1') {
-        document.getElementById('guru-head')?.classList.add('head-collapsed');
-      }
-    } catch {}
-    requestAnimationFrame(() => {
-      const log = document.getElementById('guru-log');
-      if (log) log.scrollTop = log.scrollHeight;
-      const inp = document.getElementById('guru-input');
-      if (inp && draft) {
-        inp.value = draft;
-        if (focused === 'guru-input') {
-          inp.focus();
-          if (caret != null) inp.setSelectionRange(caret, caret);
-        }
-      }
-    });
+    _guruRenderedSeq = seq;
+    _renderGuruKeepInput({ messages: h.messages, actions: h.actions, settings, queue }, true);
   } catch (e) {
+    if (seq < _guruRenderedSeq) return;
     if (!silent) {
       render('guru', { messages: [], actions: [] });
       toast(`Guru недоступен: ${e.message}`);
@@ -2840,7 +2897,10 @@ async function guruApprove(id) {
   // TG-сообщение встало в лист ожидания: уйдёт по лимиту/окну аккаунта, ждать нечего.
   if (r && r.status === 'queued') {
     _done();
-    toast(`✓ В очереди${r.queue_pos ? ` #${r.queue_pos}` : ''}${r.eta_label ? ` · ${r.eta_label}` : ''}`);
+    // На паузе ETA гипотетическое — не показываем, подсказываем, где запустить.
+    const paused = r.queue_running === false;
+    const dead = r.queue_worker_alive === false;
+    toast(`✓ В очереди${r.queue_pos ? ` #${r.queue_pos}` : ''}${paused ? ' · рассылка на паузе, запусти в листе ожидания' : dead ? ' · воркер очереди не запущен на сервере' : (r.eta_label ? ` · ${r.eta_label}` : '')}`);
     loadGuru(true);
     return;
   }
@@ -2929,6 +2989,92 @@ async function guruReject(id) {
 async function guruUnqueue(id) {
   try { await API.guru.unqueue(id); toast('↩ Вернул в черновики'); loadGuru(true); }
   catch (e) { toast(`Ошибка: ${e.message}`); }
+}
+
+// ── Выключатель рассылки листа ожидания ─────────────────────────────────────────
+// Воркер outreach_queue шлёт queued-действия только при users.guru_outreach_running=true.
+let _queueRunBusy = false;   // защита от двойного тапа: второй запрос перещёлкнул бы флаг обратно
+
+/** Подтверждение: tg.showConfirm (Bot API 6.2+, текст ≤256) или window.confirm вне Telegram. */
+const confirmQueueRun_ = (msg) => new Promise((resolve) => {
+  if (tg?.showConfirm && (!tg.isVersionAtLeast || tg.isVersionAtLeast('6.2'))) {
+    try { tg.showConfirm(msg.length > 256 ? msg.slice(0, 255) + '…' : msg, (ok) => resolve(!!ok)); return; }
+    catch {}
+  }
+  resolve(window.confirm(msg));
+});
+
+/** Когда уйдёт первое сообщение: самый ранний next_eta по аккаунтам, запасной — первая строка очереди. */
+function _queueFirstEta(q) {
+  const accs = (q?.accounts || []).filter(a => a.next_eta).sort((x, y) => (x.next_eta < y.next_eta ? -1 : 1));
+  return accs[0]?.next_eta_label || (q?.items || []).find(i => i.eta)?.eta_label || '';
+}
+
+function _queueRunConfirmText(q) {
+  const accs = q?.accounts || [];
+  const busy = accs.filter(a => a.queued > 0);
+  const pool = busy.length ? busy : accs.filter(a => a.status === 'active');
+  const lines = [`Запустить рассылку? В очереди: ${q?.total || 0} сообщ.`];
+  const dead = q?.worker_alive === false;
+  // Второй строкой: showConfirm режет текст после 256 символов, предупреждение не должно потеряться.
+  if (dead) lines.push('⚠ Воркер рассылки на сервере не работает, сообщения пока не уйдут');
+  for (const a of pool.slice(0, 2)) {
+    const win = a.schedule ? `${a.schedule.days} ${a.schedule.time_from}–${a.schedule.time_to}` : 'без окна';
+    lines.push(`С @${a.username || a.phone || a.account_id}: лимит ${a.limit_today}/день (ост. ${a.remaining_today}), окно ${win}`);
+  }
+  if (pool.length > 2) lines.push(`+ ещё ${pool.length - 2} акк.`);
+  if (!pool.length) lines.push('Активных аккаунтов нет: отправлять не с чего');
+  if (!dead) {
+    const first = _queueFirstEta(q);
+    lines.push(first ? `Первое уйдёт ~${first}` : (q?.total ? 'Свободного слота пока нет' : 'Очередь пуста: уйдёт после Approve'));
+  }
+  return lines.join('\n');
+}
+
+async function guruQueueRun(el) {
+  if (_queueRunBusy) return;
+  const running = el?.dataset.run === '1';
+  _queueRunBusy = true;
+  const btns = document.querySelectorAll('[data-action="guru-queue-run"]');
+  const label = el?.textContent;
+  btns.forEach(b => { b.disabled = true; });
+  const _done = () => {
+    _queueRunBusy = false;
+    btns.forEach(b => { b.disabled = false; if (label) b.textContent = label; });
+  };
+  try {
+    if (running) {
+      // Считаем подтверждение по свежему снимку: кэш поллинга мог отстать на 8 с.
+      let q = screenState.guru?.queue || null;
+      try { q = await API.guru.queue(); } catch {}
+      if (!(await confirmQueueRun_(_queueRunConfirmText(q)))) { _done(); return; }
+    }
+    btns.forEach(b => { b.textContent = running ? '… запускаю' : '… ставлю на паузу'; });
+    const r = await API.guru.queueRun(running);
+    const nowRunning = typeof r?.running === 'boolean' ? r.running : running;
+    if (nowRunning && r?.worker_alive === false) {
+      toast('⚠ Рассылка включена, но воркер на сервере не работает, сообщения пока не уйдут');
+    } else if (nowRunning) {
+      const eta = _queueFirstEta(r);
+      toast(`▶ Рассылка запущена${eta ? ` · первое ~${eta}` : (r?.total ? '' : ' · очередь пуста')}`);
+    } else {
+      toast('⏸ Рассылка на паузе');
+    }
+    // Сразу рисуем из ответа POST, не дожидаясь трёх запросов loadGuru через туннель:
+    // иначе кнопка/плашки висят в старом состоянии, а при сбое загрузки — до следующего поллинга.
+    if (r && currentScreen === 'guru') {
+      _guruRenderedSeq = ++_guruLoadSeq;   // поллинг, стартовавший до POST, не перетрёт свежий рендер
+      _renderGuruKeepInput({ queue: r }, false);
+    } else if (screenState.guru && r) {
+      screenState.guru.queue = r;
+    }
+    _guruHash = '';            // форсим перерисовку, даже если поллинг уже подтянул новый флаг
+    _done();                   // после render старые кнопки отсоединены: их label на экран не вернётся
+    loadGuru(true);
+  } catch (e) {
+    _done();
+    toast(`Ошибка: ${cleanErr(e)}`);
+  }
 }
 async function guruEdit(id) {
   const el = document.getElementById(`guru-draft-${id}`);
@@ -3893,6 +4039,7 @@ async function handleAction(action, el, e) {
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
+    case 'guru-queue-run': guruQueueRun(el); break;
     case 'guru-list-filter': {
       try { localStorage.setItem('guru_list_filter', el.dataset.key || 'all'); } catch {}
       if (screenState.guru) render('guru', screenState.guru);
@@ -4024,7 +4171,8 @@ async function handleAction(action, el, e) {
         // плюс при AUTO добивает висящие pending incoming_reply.
         const r = await API.guru.putSettings({ default_mode: mode, apply_to_all: true });
         const label = mode === 'full_access' ? 'AUTO' : mode === 'off' ? 'OFF' : 'DRAFT';
-        const extra = r.executed_pending ? ` · авто-отправлено ${r.executed_pending}` : '';
+        // AUTO не шлёт мимо листа ожидания: висящие ответы встают в очередь и ждут запуска рассылки.
+        const extra = r.queued_pending ? ` · в лист ожидания ${r.queued_pending}` : '';
         toast(`Режим: ${label} (${r.updated_convs} переписок)${extra}`);
         document.getElementById('guru-settings-modal')?.remove();
         _guruHash = '';

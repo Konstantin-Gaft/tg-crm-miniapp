@@ -187,6 +187,8 @@ const API = {
     edit:      (id, draft_text)    => API.req('POST', `/api/guru/actions/${id}/edit`, { draft_text }),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),
     queue:     ()                  => API.req('GET',  '/api/guru/queue'),
+    // Глобальный выключатель рассылки листа ожидания (users.guru_outreach_running)
+    queueRun:  (running)           => API.req('POST', '/api/guru/queue/run', { running: !!running }),
     setMode:   (conv_id, guru_mode)=> API.req('POST', `/api/guru/conv/${conv_id}/mode`, { guru_mode }),
     settings:  ()                  => API.req('GET',  '/api/guru/settings'),
     putSettings: (data)            => API.req('PUT',  '/api/guru/settings', data),
