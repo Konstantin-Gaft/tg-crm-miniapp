@@ -698,6 +698,23 @@ main {
 .guru-queue-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .guru-queue-eta { color: var(--ink-2); white-space: nowrap; }
 .guru-queue-btn { padding: 2px 0 !important; min-width: 0 !important; font-size: 12px; line-height: 1; }
+
+/* Чипы списков лидов в Guru (ICP Radar 14.09 · 02.09 · Ответы): списки не смешиваются в одну ленту */
+.guru-lists {
+  display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 8px;
+  scrollbar-width: none;
+}
+.guru-lists::-webkit-scrollbar { display: none; }
+.guru-list-chip {
+  flex: 0 0 auto; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  appearance: none; border-radius: 0; cursor: pointer;
+  padding: 5px 10px;
+  font-family: var(--font-h); font-weight: 700; font-size: 12px; line-height: 1.2;
+  background: var(--card); color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: var(--sh-md);
+}
+.guru-list-chip.active { background: var(--ink); color: var(--card); }
+.guru-list-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .guru-card-head { display: flex; justify-content: space-between; align-items: center; }
 .guru-card-title {
   font-family: var(--font-ui); font-weight: 600; font-size: 13px;

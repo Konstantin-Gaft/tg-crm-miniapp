@@ -2180,6 +2180,27 @@ const screens = {
       .filter(a => a.status === 'pending' || a.status === 'queued' || a.status === 'approved' || a.status === 'failed')
       .filter(a => !msgs.some(m => (m.tool_calls||[]).some(tc => tc.action_id === a.id)))
       .sort((a, b) => a.id - b.id);   // старые сверху, свежие снизу — под auto-scroll
+    // Списки лидов: черновики первого касания из разных списков (ICP Radar 02.09 / 14.09)
+    // не смешиваются — чипы над лентой. Ключ = list_id, ответы лидам и прочее отдельно.
+    const listKey = (a) => a.list_id ? `l${a.list_id}` : (a.trigger === 'incoming_reply' ? 'replies' : 'other');
+    const listLabel = (a) => a.list_id ? (a.list_name || `Список #${a.list_id}`) : (a.trigger === 'incoming_reply' ? 'Ответы' : 'Прочее');
+    const listGroups = new Map();
+    for (const a of standaloneLive) {
+      const k = listKey(a);
+      const g = listGroups.get(k) || { key: k, label: listLabel(a), count: 0, maxId: 0 };
+      g.count += 1; g.maxId = Math.max(g.maxId, a.id);
+      listGroups.set(k, g);
+    }
+    let listFilter = 'all';
+    try { listFilter = localStorage.getItem('guru_list_filter') || 'all'; } catch {}
+    if (listFilter !== 'all' && !listGroups.has(listFilter)) listFilter = 'all';
+    const visibleLive = listFilter === 'all' ? standaloneLive : standaloneLive.filter(a => listKey(a) === listFilter);
+    const chipLabel = (s) => s.replace(/^(.+?) · первое касание · (\d\d)\.(\d\d)\.\d{4}$/, '$1 $2.$3');
+    const listsHTML = listGroups.size > 1 ? `
+      <div class="guru-lists" id="guru-lists">
+        <button class="guru-list-chip ${listFilter === 'all' ? 'active' : ''}" data-action="guru-list-filter" data-key="all">Все · ${standaloneLive.length}</button>
+        ${[...listGroups.values()].sort((x, y) => y.maxId - x.maxId).map(g => `<button class="guru-list-chip ${listFilter === g.key ? 'active' : ''}" data-action="guru-list-filter" data-key="${escape(g.key)}" title="${escape(g.label)}">${escape(chipLabel(g.label))} · ${g.count}</button>`).join('')}
+      </div>` : '';
     const settings = st?.settings || { default_mode: 'admin_approved', conv_counts: {}, modes: ['admin_approved','full_access','off'] };
     const modeShort = ({admin_approved:'DRAFT', full_access:'AUTO', off:'OFF'}[settings.default_mode] || '?');
     const modeColor = ({admin_approved:'gold', full_access:'red', off:'ink'}[settings.default_mode] || 'ink');
@@ -2222,6 +2243,7 @@ const screens = {
         </div>
       </div>
       ${queueHTML}
+      ${listsHTML}
       <div class="guru-log" id="guru-log">
         ${msgs.length === 0 && actions.length === 0 ? `
           <div class="empty"><div class="empty-ico" data-pix="ninja"></div>
@@ -2229,8 +2251,8 @@ const screens = {
             <div class="empty-sub">Пиши: «ответь @user привет», «спроси Х про цены», «напиши +7… демо завтра».<br>
             Я сгенерю черновик — ты апрувнешь — улетит лиду.</div>
           </div>` : ''}
-        ${msgs.map(msgHTML).join('')}
-        ${standaloneLive.map(draftHTML).join('')}
+        ${(listFilter === 'all' ? msgs : []).map(msgHTML).join('')}
+        ${visibleLive.map(draftHTML).join('')}
       </div>
       <div class="guru-input-bar">
         <textarea id="guru-input" rows="2" placeholder="Задача для Guru…"></textarea>
@@ -2723,7 +2745,7 @@ async function loadGuru(silent=false) {
   }
   try {
     const [h, settings, queue] = await Promise.all([
-      API.guru.history(60),
+      API.guru.history(150),
       API.guru.settings().catch(() => null),
       API.guru.queue().catch(() => null),
     ]);
@@ -3871,6 +3893,12 @@ async function handleAction(action, el, e) {
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
+    case 'guru-list-filter': {
+      try { localStorage.setItem('guru_list_filter', el.dataset.key || 'all'); } catch {}
+      if (screenState.guru) render('guru', screenState.guru);
+      requestAnimationFrame(() => { const log = document.getElementById('guru-log'); if (log) log.scrollTop = log.scrollHeight; });
+      break;
+    }
     case 'toggle-guru-queue': {
       const box = document.getElementById('guru-queue');
       if (!box) break;
