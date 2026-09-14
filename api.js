@@ -115,12 +115,6 @@ const API = {
     set:    ({lead_id, tg_id, reason, on=true}) => API.req('POST', '/api/stoplist', { lead_id, tg_id, reason, on }),
   },
 
-  deals: {
-    list:   ()         => API.req('GET',    '/api/deals'),
-    create: (data)     => API.req('POST',   '/api/deals', data),
-    update: (id, data) => API.req('PATCH',  `/api/deals/${id}`, data),
-    remove: (id)       => API.req('DELETE', `/api/deals/${id}`),
-  },
 
   tasks: {
     list:   (due='open') => API.req('GET',    `/api/tasks?due=${due}`),
@@ -182,7 +176,8 @@ const API = {
     chat:      (text)              => API.req('POST', '/api/guru/chat', { text }),
     history:   (limit=50)          => API.req('GET',  `/api/guru/history?limit=${limit}`),
     actions:   (status)            => API.req('GET',  `/api/guru/actions${status?`?status=${status}`:''}`),
-    approve:   (id)                => API.req('POST', `/api/guru/actions/${id}/approve`),
+    // draft_text: текст из поля карточки на момент апрува (null = как в базе)
+    approve:   (id, draft_text=null) => API.req('POST', `/api/guru/actions/${id}/approve`, draft_text != null ? { draft_text } : null),
     reject:    (id)                => API.req('POST', `/api/guru/actions/${id}/reject`),
     edit:      (id, draft_text)    => API.req('POST', `/api/guru/actions/${id}/edit`, { draft_text }),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),

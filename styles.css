@@ -598,14 +598,14 @@ main {
   background: var(--paper);
 }
 .guru-log {
-  flex: 1; overflow-y: auto; padding: 14px;
-  display: flex; flex-direction: column; gap: 12px;
+  flex: 1; overflow-y: auto; padding: 6px 12px 16px;
+  display: flex; flex-direction: column; gap: 10px;
 }
-/* Guru head — collapsible + inline mode pill */
-.guru-head { cursor: default; transition: padding .15s, max-height .15s; padding: 10px 14px; }
-.guru-head h2 { cursor: pointer; user-select: none; }
+/* Guru head — collapsible + inline mode pill. Компактнее обычного head-row: экран рабочий, не витрина */
+.guru-head { cursor: default; transition: padding .15s, max-height .15s; padding: 6px 12px; margin-bottom: 8px; }
+.guru-head h2 { cursor: pointer; user-select: none; font-size: 16px; }
 .guru-head-meta { display: flex; align-items: center; gap: 10px; }
-.guru-head.head-collapsed { padding: 2px 14px; max-height: 22px; overflow: hidden; }
+.guru-head.head-collapsed { padding: 2px 12px; max-height: 22px; overflow: hidden; }
 .guru-head.head-collapsed h2 { font-size: 11px; color: var(--ink-2); margin: 0; }
 .guru-head.head-collapsed .guru-head-meta { display: none; }
 
@@ -654,137 +654,86 @@ main {
 }
 .guru-msg-user .guru-bubble { background: #c8e8d6; color: var(--ink); }
 
+/* Карточка черновика: белая, статус = цветная полоса слева
+   (золото: разобрать, синий: в очереди, красный: не ушло, мята: отправлено) */
 .guru-card {
   width: 100%;
-  padding: 12px 14px;
-  background: var(--gold); color: var(--ink);
-  border: 3px solid var(--ink);
-  box-shadow: var(--sh-md);
-  display: flex; flex-direction: column; gap: 8px;
-}
-.guru-card-pending  { background: var(--gold); }
-.guru-card-executed { background: var(--mint); color: var(--card); }
-.guru-card-rejected, .guru-card-failed { background: var(--card); color: var(--ink-2); opacity: .7; }
-.guru-card-approved { background: var(--card); border-style: dashed; }   /* отправка в процессе */
-.guru-card-queued   { background: #DCE8F5; }                              /* в листе ожидания */
-.guru-card-queued .guru-card-meta { background: var(--blue); color: var(--card); }
-
-/* Лист ожидания: аккаунты с лимитом + очередь с ETA */
-.guru-queue {
-  margin: 0 10px 8px;
+  padding: 8px 12px;
   background: var(--card); color: var(--ink);
-  border: 3px solid var(--ink); box-shadow: var(--sh-md);
-  font-family: var(--font-ui);
+  border: 2px solid var(--ink); border-left-width: 6px; border-left-color: var(--gold);
+  box-shadow: var(--sh-sm);
+  display: flex; flex-direction: column; gap: 6px;
 }
-.guru-queue-head {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; cursor: pointer;
-  font-family: var(--font-h); font-weight: 700; font-size: 13px;
-  background: var(--blue); color: var(--card);
-}
-.guru-queue.collapsed .guru-queue-body { display: none; }
-.guru-queue-body { padding: 6px 10px 8px; max-height: 40vh; overflow-y: auto; }
-.guru-queue-acc {
-  font-size: 12px; padding: 6px 8px; margin-bottom: 6px;
-  background: rgba(91,137,197,.12); border: 1px solid var(--ink);
-}
-.guru-queue-warn { color: var(--red); }
-.guru-queue-row {
-  display: grid; grid-template-columns: 34px 1fr auto 28px 28px; gap: 6px; align-items: center;
-  padding: 4px 2px; font-size: 12px; border-bottom: 1px dashed rgba(26,20,17,.2);
-}
-.guru-queue-row:last-child { border-bottom: 0; }
-.guru-queue-pos { font-family: var(--font-h); font-weight: 700; color: var(--blue); }
-.guru-queue-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.guru-queue-eta { color: var(--ink-2); white-space: nowrap; }
-.guru-queue-btn { padding: 2px 0 !important; min-width: 0 !important; font-size: 12px; line-height: 1; }
-/* Выключатель рассылки: статус в шапке панели + кнопка первой строкой */
-.guru-queue-head-r { display: flex; align-items: center; gap: 8px; }
-.guru-queue-state {
-  font-size: 11px; line-height: 1; padding: 3px 6px; white-space: nowrap;
-  border: 2px solid var(--ink); background: var(--card); color: var(--ink);
-}
-.guru-queue-state.off { background: var(--gold); }
-.guru-queue-run {
-  width: 100%; min-height: 40px; margin: 2px 0 10px;
-  font-family: var(--font-h); font-size: 13px;
-}
-.guru-queue-run.start { background: var(--gold); color: var(--ink); }
-.guru-queue-run.stop  { background: var(--card); color: var(--ink); }
-.guru-queue-paused { color: var(--ink); background: var(--gold); padding: 0 4px; }
-/* Воркер очереди на сервере не запущен: плашка в шапке + пояснение в теле */
-.guru-queue-head { flex-wrap: wrap; row-gap: 4px; }
-.guru-queue-head-r { flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
-.guru-queue-state.dead { background: var(--red); color: var(--card); }
-.guru-queue-deadnote {
-  font-size: 12px; padding: 6px 8px; margin-bottom: 6px;
-  border: 2px solid var(--ink); background: var(--gold); color: var(--ink);
-}
-/* Ушло за 24 ч: тап по строке открывает диалог */
-.guru-queue-sent { margin-top: 8px; padding-top: 6px; border-top: 2px solid var(--ink); }
-.guru-queue-sent-title { font-family: var(--font-h); font-weight: 700; font-size: 12px; margin-bottom: 2px; }
-.guru-queue-sent-row {
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-  width: 100%; min-height: 36px; padding: 4px 2px; font-size: 12px; font-family: inherit;
-  background: none; border: 0; border-bottom: 1px dashed rgba(26,20,17,.2);
-  color: var(--ink); text-align: left;
-}
-.guru-queue-sent-row:last-child { border-bottom: 0; }
-button.guru-queue-sent-row { cursor: pointer; }
-.guru-queue-sent-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Чипы списков лидов в Guru (ICP Radar 14.09 · 02.09 · Ответы): списки не смешиваются в одну ленту */
-.guru-lists {
-  display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 8px;
-  scrollbar-width: none;
-}
-.guru-lists::-webkit-scrollbar { display: none; }
-.guru-list-chip {
-  flex: 0 0 auto; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  appearance: none; border-radius: 0; cursor: pointer;
-  padding: 5px 10px;
-  font-family: var(--font-h); font-weight: 700; font-size: 12px; line-height: 1.2;
-  background: var(--card); color: var(--ink);
-  border: 2px solid var(--ink); box-shadow: var(--sh-md);
-}
-.guru-list-chip.active { background: var(--ink); color: var(--card); }
-.guru-list-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
-.guru-card-head { display: flex; justify-content: space-between; align-items: center; }
+.guru-card-queued   { border-left-color: var(--blue); }
+.guru-card-approved { border-left-color: var(--ink-3); border-style: dashed; border-left-style: solid; }
+.guru-card-failed   { border-left-color: var(--red); }
+.guru-card-executed { border-left-color: var(--mint); }
+.guru-card-rejected { border-left-color: var(--ink-3); opacity: .7; }
+.guru-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 22px; }
 .guru-card-title {
-  font-family: var(--font-ui); font-weight: 600; font-size: 13px;
+  font-family: var(--font-ui); font-size: 13px; min-width: 0;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.guru-card-user {
+  appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--blue);
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.guru-card-user:hover { color: var(--red); }
+.guru-card-right { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.guru-card-tag {
+  font-family: var(--font-h); font-size: 10px; font-weight: 700; color: var(--ink-2);
+  padding: 2px 6px; border: 1px solid var(--ink-3); white-space: nowrap;
+  max-width: 40vw; overflow: hidden; text-overflow: ellipsis;
 }
 .guru-card-meta {
   font-family: var(--font-h); font-weight: 700; font-size: 10px;
-  text-transform: uppercase; letter-spacing: 0.5px;
+  text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;
   background: var(--ink); color: var(--gold);
   padding: 3px 7px; border: 1px solid var(--ink);
 }
-.guru-card-executed .guru-card-meta { background: var(--card); color: var(--mint); }
+.guru-card-meta.queued { background: var(--blue); color: var(--card); }
+.guru-card-meta.failed { background: var(--red); color: var(--card); }
+.guru-card-meta.ok     { background: var(--card); color: var(--mint); }
 .guru-card-intent {
   font-family: var(--font-ui); font-size: 13px; font-style: italic;
-  background: rgba(26,20,17,.08); padding: 7px 10px; border: 1px solid var(--ink);
+  background: rgba(26,20,17,.06); padding: 6px 10px; border: 1px solid rgba(26,20,17,.25);
 }
 .guru-card-attach {
   font-family: var(--font-ui); font-size: 12px;
   background: var(--gold); color: var(--ink);
-  padding: 6px 10px; border: 1px solid var(--ink);
+  padding: 5px 10px; border: 1px solid var(--ink);
   font-weight: 600;
 }
+.guru-card-warn {
+  font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+  background: var(--red); color: var(--card);
+  padding: 5px 10px; border: 1px solid var(--ink);
+}
+/* Поле растёт под текст (JS _autoGrow): всё сообщение видно целиком, без внутренней прокрутки */
 .guru-draft {
-  width: 100%; padding: 10px 12px;
-  border: 2px solid var(--ink);
+  width: 100%; padding: 8px 10px;
+  border: 1px solid rgba(26,20,17,.35);
   background: var(--card); color: var(--ink);
-  font-family: var(--font-ui); font-size: 14px; line-height: 1.5;
-  resize: vertical; min-height: 60px;
+  font-family: var(--font-ui); font-size: 14px; line-height: 1.45;
+  resize: none; overflow: hidden; min-height: 38px;
   outline: 0; border-radius: 0;
 }
+.guru-draft:focus { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .guru-draft:disabled { background: var(--paper); color: var(--ink-2); }
-.guru-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.guru-actions .btn { flex: 1; min-width: 100px; padding: 8px 10px; font-size: 11px; }
+.guru-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.guru-save-hint { margin-right: auto; font-family: var(--font-ui); font-size: 11px; color: var(--ink-3); }
+.btn.sm { padding: 6px 12px; font-size: 12px; border-width: 2px; box-shadow: 3px 3px 0 var(--ink); }
+.btn.sm.ghost { box-shadow: none; }
+.btn.sm:active { transform: translate(1px, 1px); box-shadow: 2px 2px 0 var(--ink); }
 .guru-card-error {
   font-family: var(--font-ui); font-size: 12px;
   background: var(--red); color: var(--card);
   padding: 6px 10px; border: 2px solid var(--ink);
+}
+.guru-feed-empty {
+  padding: 28px 12px; text-align: center;
+  font-family: var(--font-ui); font-size: 14px; color: var(--ink-2); line-height: 1.5;
 }
 .guru-input-bar {
   display: flex; gap: 8px;
@@ -802,6 +751,94 @@ button.guru-queue-sent-row { cursor: pointer; }
 }
 .guru-input-bar textarea:focus { border-color: var(--ink); }
 .guru-input-bar .btn { padding: 0 14px; font-size: 18px; min-width: 44px; border-radius: 50%; box-shadow: none; height: 38px; width: 38px; }
+
+/* Лист ожидания: аккаунты с лимитом + очередь с ETA. Сворачивается; строка раскрывается в редактор */
+.guru-queue {
+  margin: 0 10px 8px;
+  background: var(--card); color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: var(--sh-sm);
+  font-family: var(--font-ui);
+}
+.guru-queue-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; cursor: pointer;
+  font-family: var(--font-h); font-weight: 700; font-size: 12px;
+  background: var(--blue); color: var(--card);
+  flex-wrap: wrap; row-gap: 4px;
+}
+.guru-queue.collapsed .guru-queue-body { display: none; }
+.guru-queue-body { padding: 6px 10px 8px; max-height: 45vh; overflow-y: auto; }
+.guru-queue-acc {
+  font-size: 12px; padding: 5px 8px; margin-bottom: 6px;
+  background: rgba(91,137,197,.12); border: 1px solid var(--ink);
+}
+.guru-queue-warn { color: var(--red); }
+.guru-queue-item { border-bottom: 1px dashed rgba(26,20,17,.2); }
+.guru-queue-item:last-of-type { border-bottom: 0; }
+.guru-queue-row {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) auto 28px 28px; gap: 6px; align-items: center;
+  padding: 4px 2px; font-size: 12px;
+}
+.guru-queue-pos { font-family: var(--font-h); font-weight: 700; color: var(--blue); }
+.guru-queue-who {
+  appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: var(--ink); text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.guru-queue-who:hover { color: var(--blue); }
+.guru-queue-who .guru-queue-chev { color: var(--ink-3); }
+.guru-queue-edit { padding: 2px 0 8px; display: flex; flex-direction: column; gap: 6px; }
+.guru-queue-eta { color: var(--ink-2); white-space: nowrap; }
+.guru-queue-btn { padding: 2px 0 !important; min-width: 0 !important; font-size: 12px; line-height: 1; }
+/* Выключатель рассылки: статус в шапке панели + кнопка первой строкой */
+.guru-queue-head-r { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; row-gap: 4px; }
+.guru-queue-state {
+  font-size: 11px; line-height: 1; padding: 3px 6px; white-space: nowrap;
+  border: 2px solid var(--ink); background: var(--card); color: var(--ink);
+}
+.guru-queue-state.off { background: var(--gold); }
+.guru-queue-state.dead { background: var(--red); color: var(--card); }
+.guru-queue-run {
+  width: 100%; min-height: 36px; margin: 2px 0 8px;
+  font-family: var(--font-h); font-size: 13px;
+}
+.guru-queue-run.start { background: var(--gold); color: var(--ink); }
+.guru-queue-run.stop  { background: var(--card); color: var(--ink); }
+.guru-queue-paused { color: var(--ink); background: var(--gold); padding: 0 4px; }
+.guru-queue-deadnote {
+  font-size: 12px; padding: 6px 8px; margin-bottom: 6px;
+  border: 2px solid var(--ink); background: var(--gold); color: var(--ink);
+}
+/* Ушло за 24 ч: тап по строке открывает диалог */
+.guru-queue-sent { margin-top: 8px; padding-top: 6px; border-top: 2px solid var(--ink); }
+.guru-queue-sent-title { font-family: var(--font-h); font-weight: 700; font-size: 12px; margin-bottom: 2px; }
+.guru-queue-sent-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  width: 100%; min-height: 32px; padding: 4px 2px; font-size: 12px; font-family: inherit;
+  background: none; border: 0; border-bottom: 1px dashed rgba(26,20,17,.2);
+  color: var(--ink); text-align: left;
+}
+.guru-queue-sent-row:last-child { border-bottom: 0; }
+button.guru-queue-sent-row { cursor: pointer; }
+.guru-queue-sent-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Чипы над лентой: списки лидов (ICP Radar 14.09 · 02.09 · Ответы) + «💬 Чат» справа */
+.guru-lists {
+  display: flex; gap: 6px; overflow-x: auto; padding: 0 10px 8px; align-items: center;
+  scrollbar-width: none;
+}
+.guru-lists::-webkit-scrollbar { display: none; }
+.guru-lists-gap { flex: 1 0 8px; }
+.guru-list-chip {
+  flex: 0 0 auto; max-width: 70vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  appearance: none; border-radius: 0; cursor: pointer;
+  padding: 4px 10px;
+  font-family: var(--font-h); font-weight: 700; font-size: 11px; line-height: 1.2;
+  background: var(--card); color: var(--ink);
+  border: 2px solid var(--ink); box-shadow: var(--sh-sm);
+}
+.guru-list-chip.active { background: var(--ink); color: var(--card); }
+.guru-list-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
 /* ============================ PIX ICON STAMPS ============================ */
 .pix-icon {
@@ -1092,7 +1129,11 @@ main {
   }
   .conv-bubble { max-width: min(78%, 560px); }
   .guru-bubble { max-width: min(86%, 620px); }
-  .guru-card   { max-width: 760px; }
+  /* Лента Guru шире читаемой колонки: короткие строки черновиков не переносятся, карточки ниже.
+     Лист ожидания и чипы держат ту же ширину, чтобы всё стояло одной колонкой. */
+  .guru-log   { max-width: 920px; }
+  .guru-queue { width: min(100% - 20px, 900px); margin-inline: auto; }
+  .guru-lists { width: min(100%, 920px); margin-inline: auto; }
 
   /* FAB прижимается к правому краю контентной колонки, а не окна */
   .fab-wrap { right: max(18px, calc(50vw - var(--content-w) / 2 + 18px)); }

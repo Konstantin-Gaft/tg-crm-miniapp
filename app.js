@@ -658,11 +658,6 @@ const screens = {
         <div class="list-arrow">›</div>
       </div>
       <div class="section-title">CRM</div>
-      <div class="list-item" data-action="goto-deals">
-        <div class="list-ico" data-pix="briefcase"></div>
-        <div class="list-text"><div class="list-title">Сделки</div><div class="list-sub">Pipeline по лидам с values и close-date</div></div>
-        <div class="list-arrow">›</div>
-      </div>
       <div class="list-item" data-action="goto-kb">
         <div class="list-ico" data-pix="brain"></div>
         <div class="list-text"><div class="list-title">База знаний</div><div class="list-sub">Canned-ответы для AI: цена, безопасность, конкуренты</div></div>
@@ -1803,84 +1798,6 @@ const screens = {
     </div>`;
   },
 
-  // ---------- DEALS ----------
-  deals: (st) => {
-    const deals = st?.deals ?? [];
-    const STAGES = ['Discovery','Demo','Trial','Proposal','Negotiation','Won','Lost'];
-    const counts = {}; deals.forEach(d => counts[d.stage] = (counts[d.stage]||0)+1);
-    const totalValue = deals.filter(d => !['Won','Lost'].includes(d.stage)).reduce((s,d)=>s+(d.value||0),0);
-    return `
-      <div class="screen">
-        <div class="head-row"><h2>Сделки</h2><button class="add-btn" data-action="new-deal" title="Создать новую сделку — стадия, сумма, ожидаемая дата закрытия">+</button></div>
-        ${deals.length === 0 ? `
-          <div class="empty"><div class="empty-ico" data-pix="briefcase"></div>
-            <div class="empty-title">Нет сделок</div>
-            <div>Сделка = лид + value + стейдж + close-date. Сюда складывай тех, с кем уже идёт реальный разговор о покупке.</div>
-            <button class="btn" style="margin-top:16px" data-action="new-deal">Создать сделку</button>
-          </div>
-        ` : `
-          <div class="card" style="background:linear-gradient(135deg,#dbeafe,#e0e7ff)">
-            <div style="font-size:13px;color:#1e3a8a">💰 Pipeline (без Won/Lost): <b>$${totalValue.toLocaleString('en-US')}</b></div>
-          </div>
-          <div class="stage-strip">
-            ${STAGES.filter(s => counts[s]).map(s => `<div class="stage-chip">${escape(s)} · ${counts[s]}</div>`).join('')}
-          </div>
-          ${deals.map(d => `
-            <div class="card" data-action="edit-deal" data-id="${d.id}">
-              <div class="card-row">
-                <div style="flex:1;min-width:0">
-                  <div style="font-weight:600;font-size:14px">${escape(d.name)}</div>
-                  <div style="font-size:12px;color:var(--text-muted);margin-top:2px">
-                    ${escape(d.lead_name || d.lead_username || `lead #${d.lead_id}`)}${d.close_date?' · close '+new Date(d.close_date).toISOString().slice(0,10):''}
-                  </div>
-                </div>
-                <div style="text-align:right">
-                  <div style="font-weight:600;color:var(--accent)">$${(d.value||0).toLocaleString('en-US')}</div>
-                  <span class="lead-score ${d.stage==='Won'?'cold':d.stage==='Lost'?'hot':'warm'}" style="font-size:11px;margin-top:4px;display:inline-block">${escape(d.stage)}</span>
-                </div>
-              </div>
-            </div>
-          `).join('')}
-        `}
-      </div>`;
-  },
-
-  deal_edit: (st) => {
-    const d = st?.deal || {};
-    const leadOptions = st?.leads || [];   // если новая сделка — выбор из списка лидов
-    const STAGES = ['Discovery','Demo','Trial','Proposal','Negotiation','Won','Lost'];
-    return `
-      <div class="screen">
-        <div class="head-row"><h2 style="font-size:18px">${d.id?'Редактировать сделку':'Новая сделка'}</h2></div>
-        <div class="card">
-          ${!d.id ? `
-            <label style="font-size:12px;color:var(--text-muted)">Лид</label>
-            <select id="d-lead" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
-              ${leadOptions.map(l => `<option value="${l.id}">${escape((l.full_name||l.username||'?'))} ${l.username?'@'+escape(l.username):''}</option>`).join('')}
-            </select>
-          ` : `<div style="font-size:13px;color:var(--text-muted)">Лид: <b style="color:var(--text)">${escape(d.lead_name || d.lead_username || '')}</b></div>`}
-          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:block">Название</label>
-          <input id="d-name" value="${escape(d.name||'')}" placeholder="Напр.: BitOK API → CryptoExchange-X"
-                 style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
-          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:block">Стейдж</label>
-          <select id="d-stage" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
-            ${STAGES.map(s => `<option ${d.stage===s?'selected':''}>${s}</option>`).join('')}
-          </select>
-          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:block">Value (USD)</label>
-          <input id="d-value" type="number" min="0" value="${d.value||0}"
-                 style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
-          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:block">Close date</label>
-          <input id="d-close" type="date" value="${d.close_date?new Date(d.close_date).toISOString().slice(0,10):''}"
-                 style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
-          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:block">Заметка</label>
-          <textarea id="d-note" rows="4" placeholder="Контактное лицо, decision criteria, конкуренты..."
-                    style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:13px;margin-top:4px;font-family:inherit;resize:vertical">${escape(d.note||'')}</textarea>
-        </div>
-        <button class="btn full" style="margin-top:8px" data-action="save-deal" data-id="${d.id||0}">Сохранить</button>
-        ${d.id?`<button class="btn full secondary" style="margin-top:8px;color:#ef4444" data-action="delete-deal" data-id="${d.id}">Удалить</button>`:''}
-      </div>`;
-  },
-
   // ---------- TASKS ----------
   tasks: (st) => {
     const tasks = st?.tasks ?? [];
@@ -2131,94 +2048,143 @@ const screens = {
     if (msgs === null) {
       return `<div class="screen"><div class="empty"><div class="empty-ico" data-pix="clock"></div><div class="empty-title">Загружаю Guru</div></div></div>`;
     }
-    const pending = actions.filter(a => a.status === 'pending');
-    const queued = actions.filter(a => a.status === 'queued');
-    // Рассылка на паузе (guru_outreach_running=false): ETA гипотетическое — вместо него «ждёт запуска».
-    // Флаг берём из листа ожидания (он же рисует кнопку), queue_running карточки — запасной.
-    const queuePaused = (a) => (st?.queue && typeof st.queue.running === 'boolean') ? !st.queue.running : a.queue_running === false;
-    // Воркер очереди на сервере не крутится (BITOK_NO_WORKERS=1): строго false, чтобы старый бэкенд без поля не пугал.
-    const queueDead = (a) => (st?.queue && typeof st.queue.worker_alive === 'boolean') ? !st.queue.worker_alive : a.queue_worker_alive === false;
-    const queueMeta = (a) => '⏳ в очереди' + (a.queue_pos ? ` #${a.queue_pos}` : '')
-      + (queuePaused(a) ? (a.eta || !a.eta_label ? ' · ждёт запуска' : ` · ${a.eta_label}`)
-        : queueDead(a) ? ' · воркер не запущен'
-        : (a.eta_label ? ` · ${a.eta_label}` : ''));
-    const draftHTML = (a) => `
-      <div class="guru-card guru-card-${escape(a.status)}" data-act-id="${a.id}">
-        <div class="guru-card-head">
-          <div class="guru-card-title">${a.trigger === 'incoming_reply' ? '📨 Ответ лиду:' : '✎ Черновик для:'} <b>${escape(a.target_label || a.target_username || a.target_phone || '?')}</b></div>
-          <div class="guru-card-meta">${a.status === 'approved' ? '⏳ отправляется' : a.status === 'queued' ? escape(queueMeta(a)) : escape(a.status) + (a.trigger === 'incoming_reply' ? (a.auto ? ' · авто' : ' · ждёт апрува') : '')}</div>
-        </div>
-        ${a.intent ? `<div class="guru-card-intent">${a.trigger === 'incoming_reply' ? '<span class="muted small">Входящее:</span> ' : ''}«${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
-        ${a.asset_id ? `<div class="guru-card-attach">📎 приложен файл #${a.asset_id} — уйдёт вместе с текстом</div>` : ''}
-        <textarea class="guru-draft" id="guru-draft-${a.id}" rows="3" ${(a.status !== 'pending' && a.status !== 'queued') ? 'disabled' : ''}>${escape(a.draft_text || '')}</textarea>
-        ${a.status === 'pending' ? `
-          <div class="guru-actions">
-            <button class="btn primary" data-action="guru-approve" data-id="${a.id}" title="Одобрить: сообщение встанет в лист ожидания и уйдёт по лимиту аккаунта">✓ Approve → в очередь</button>
-            <button class="btn" data-action="guru-edit" data-id="${a.id}" title="Сохранить правки текста (без отправки)">Сохранить правки</button>
-            <button class="btn ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик — не отправлять">Отклонить</button>
-          </div>` : ''}
-        ${a.status === 'queued' ? `
-          <div class="guru-actions">
-            <button class="btn" data-action="guru-edit" data-id="${a.id}" title="Сохранить правки: уйдёт уже исправленный текст">Сохранить правки</button>
-            <button class="btn" data-action="guru-unqueue" data-id="${a.id}" title="Вернуть в черновики, из очереди убрать">↩ В черновики</button>
-            <button class="btn ghost" data-action="guru-reject" data-id="${a.id}" title="Убрать из очереди и отклонить">Отклонить</button>
-          </div>` : ''}
-        ${a.status === 'approved' ? `
-          <div class="guru-card-attach">⏳ отправляю${a.asset_id ? ' — файл заливается в Telegram, это может занять до минуты' : '…'}</div>` : ''}
-        ${a.status === 'failed' ? `
-          <div class="guru-actions">
-            <button class="btn primary" data-action="guru-approve" data-id="${a.id}" title="Сбросить failed → попробовать отправить ещё раз">↻ Повторить</button>
-            <button class="btn ghost" data-action="guru-reject" data-id="${a.id}" title="Отметить как отклонённый">Отклонить</button>
-          </div>` : ''}
-        ${a.error ? `<div class="guru-card-error">⚠️ ${escape(a.error)}</div>` : ''}
-      </div>`;
-    const msgHTML = (m) => {
-      if (m.tool_calls && m.tool_calls.length) {
-        const aid = m.tool_calls[0]?.action_id;
-        const a = aid && actions.find(x => x.id === aid);
-        if (a) return `<div class="guru-msg guru-msg-${escape(m.role)}"><div class="guru-bubble">${escape(m.content)}</div>${draftHTML(a)}</div>`;
-      }
-      return `<div class="guru-msg guru-msg-${escape(m.role)}"><div class="guru-bubble">${escape(m.content).replace(/\n/g,'<br>')}</div></div>`;
-    };
-    // Показываем не только pending: карточка, ушедшая в отправку, должна остаться на
-    // экране с индикатором, а упавшая — показать причину и кнопку «Повторить».
-    // Раньше фильтр был только по pending: approve заставлял карточку исчезнуть,
-    // а failed не показывался вообще — ошибку было негде увидеть.
-    const standaloneLive = actions
-      .filter(a => a.status === 'pending' || a.status === 'queued' || a.status === 'approved' || a.status === 'failed')
-      .filter(a => !msgs.some(m => (m.tool_calls||[]).some(tc => tc.action_id === a.id)))
-      .sort((a, b) => a.id - b.id);   // старые сверху, свежие снизу — под auto-scroll
-    // Списки лидов: черновики первого касания из разных списков (ICP Radar 02.09 / 14.09)
-    // не смешиваются — чипы над лентой. Ключ = list_id, ответы лидам и прочее отдельно.
-    const listKey = (a) => a.list_id ? `l${a.list_id}` : (a.trigger === 'incoming_reply' ? 'replies' : 'other');
-    const listLabel = (a) => a.list_id ? (a.list_name || `Список #${a.list_id}`) : (a.trigger === 'incoming_reply' ? 'Ответы' : 'Прочее');
-    const listGroups = new Map();
-    for (const a of standaloneLive) {
-      const k = listKey(a);
-      const g = listGroups.get(k) || { key: k, label: listLabel(a), count: 0, maxId: 0 };
-      g.count += 1; g.maxId = Math.max(g.maxId, a.id);
-      listGroups.set(k, g);
-    }
-    let listFilter = 'all';
-    try { listFilter = localStorage.getItem('guru_list_filter') || 'all'; } catch {}
-    if (listFilter !== 'all' && !listGroups.has(listFilter)) listFilter = 'all';
-    const visibleLive = listFilter === 'all' ? standaloneLive : standaloneLive.filter(a => listKey(a) === listFilter);
-    const chipLabel = (s) => s.replace(/^(.+?) · первое касание · (\d\d)\.(\d\d)\.\d{4}$/, '$1 $2.$3');
-    const listsHTML = listGroups.size > 1 ? `
-      <div class="guru-lists" id="guru-lists">
-        <button class="guru-list-chip ${listFilter === 'all' ? 'active' : ''}" data-action="guru-list-filter" data-key="all">Все · ${standaloneLive.length}</button>
-        ${[...listGroups.values()].sort((x, y) => y.maxId - x.maxId).map(g => `<button class="guru-list-chip ${listFilter === g.key ? 'active' : ''}" data-action="guru-list-filter" data-key="${escape(g.key)}" title="${escape(g.label)}">${escape(chipLabel(g.label))} · ${g.count}</button>`).join('')}
-      </div>` : '';
-    const settings = st?.settings || { default_mode: 'admin_approved', conv_counts: {}, modes: ['admin_approved','full_access','off'] };
-    const modeShort = ({admin_approved:'DRAFT', full_access:'AUTO', off:'OFF'}[settings.default_mode] || '?');
-    const modeColor = ({admin_approved:'gold', full_access:'red', off:'ink'}[settings.default_mode] || 'ink');
     const q = st?.queue;
     // Выключатель рассылки: running=true — воркер шлёт, иначе очередь стоит (ETA «как если бы шло»).
     const qRunning = q?.running === true;
     const qPaused = q?.running === false;
     const qDead = q?.worker_alive === false;
-    let queueOpen = true;
-    try { queueOpen = localStorage.getItem('guru_queue_collapsed') !== '1'; } catch {}
+    // Флаг берём из листа ожидания (он же рисует кнопку), queue_running карточки — запасной.
+    const queuePaused = (a) => (q && typeof q.running === 'boolean') ? !q.running : a.queue_running === false;
+    // Воркер очереди на сервере не крутится: строго false, чтобы старый бэкенд без поля не пугал.
+    const queueDead = (a) => (q && typeof q.worker_alive === 'boolean') ? !q.worker_alive : a.queue_worker_alive === false;
+    const queueMeta = (a) => '⏳ в очереди' + (a.queue_pos ? ` #${a.queue_pos}` : '')
+      + (queuePaused(a) ? (a.eta || !a.eta_label ? ' · ждёт запуска' : ` · ${a.eta_label}`)
+        : queueDead(a) ? ' · воркер не запущен'
+        : (a.eta_label ? ` · ${a.eta_label}` : ''));
+    // Живые карточки: pending/failed/approved — в ленте на разбор; queued — только в листе
+    // ожидания (там строка раскрывается в редактор). Старые сверху: разбираем по порядку.
+    // Упавшие старше недели не показываем: «database is locked» из мая не разобрать, только шум.
+    const weekAgo = Date.now() - 7 * 864e5;
+    const live = actions
+      .filter(a => a.status === 'pending' || a.status === 'queued' || a.status === 'approved'
+        || (a.status === 'failed' && (!a.created_at || Date.parse(a.created_at) > weekAgo)))
+      .sort((a, b) => a.id - b.id);
+    const feedLive = live.filter(a => a.status !== 'queued');
+    const pending = live.filter(a => a.status === 'pending');
+    const queued = live.filter(a => a.status === 'queued');
+    const byId = new Map(actions.map(a => [a.id, a]));
+    const chipLabel = (s) => (s || '').replace(/^(.+?) · первое касание · (\d\d)\.(\d\d)\.\d{4}$/, '$1 $2.$3');
+    // Заголовок карточки: target_label «Компания · @user» → компания + кликабельный @user
+    // (проверить профиль перед отправкой, не выходя из ленты).
+    const who = (a) => {
+      const label = a.target_label || a.target_username || a.target_phone || '?';
+      const m = label.match(/^(.*?)\s*·\s*@([A-Za-z0-9_]+)\s*$/);
+      const company = m ? m[1] : label;
+      const uname = m ? m[2] : (a.target_username || '');
+      const user = uname ? `<button class="guru-card-user" data-action="guru-open-tg" data-uname="${escape(uname)}" title="Открыть профиль в Telegram">@${escape(uname)}</button>` : '';
+      const same = uname && (company === '@' + uname || company === uname);
+      return `${same ? '' : `<b>${escape(company)}</b> `}${user}`;
+    };
+    const draftHTML = (a, opts = {}) => {
+      const isReply = a.trigger === 'incoming_reply';
+      const editable = a.status === 'pending' || a.status === 'queued';
+      const text = a.draft_text || '';
+      const warn = editable && guruMentionsSource(text);
+      const tag = opts.showList && a.list_name
+        ? `<span class="guru-card-tag" title="${escape(a.list_name)}">${escape(chipLabel(a.list_name))}</span>` : '';
+      const meta = a.status === 'approved' ? '<span class="guru-card-meta">⏳ отправляется</span>'
+        : a.status === 'queued' ? `<span class="guru-card-meta queued">${escape(queueMeta(a))}</span>`
+        : a.status === 'failed' ? '<span class="guru-card-meta failed">не ушло</span>'
+        : a.status === 'executed' ? '<span class="guru-card-meta ok">✓ отправлено</span>'
+        : a.status === 'rejected' ? '<span class="guru-card-meta">отклонено</span>'
+        : isReply ? `<span class="guru-card-meta">${a.auto ? 'авто' : 'ответ лиду'}</span>` : '';
+      return `
+      <div class="guru-card guru-card-${escape(a.status)}" data-act-id="${a.id}">
+        <div class="guru-card-head">
+          <div class="guru-card-title">${isReply ? '📨 ' : ''}${who(a)}</div>
+          <div class="guru-card-right">${tag}${meta}</div>
+        </div>
+        ${isReply && a.intent ? `<div class="guru-card-intent"><span class="muted small">Входящее:</span> «${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
+        ${a.asset_id ? `<div class="guru-card-attach">📎 файл #${a.asset_id} уйдёт вместе с текстом</div>` : ''}
+        ${warn ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
+        <textarea class="guru-draft" id="guru-draft-${a.id}" rows="1" ${editable ? '' : 'disabled'}>${escape(text)}</textarea>
+        ${a.error ? `<div class="guru-card-error">⚠️ ${escape(a.error)}</div>` : ''}
+        ${a.status === 'pending' ? `
+          <div class="guru-actions">
+            <span class="guru-save-hint" id="guru-save-${a.id}"></span>
+            <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик, не отправлять">Отклонить</button>
+            <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter">✓ В очередь</button>
+          </div>` : ''}
+        ${a.status === 'queued' ? `
+          <div class="guru-actions">
+            <span class="guru-save-hint" id="guru-save-${a.id}"></span>
+            <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Убрать из очереди и отклонить">Отклонить</button>
+            <button class="btn sm" data-action="guru-unqueue" data-id="${a.id}" title="Вернуть в черновики, из очереди убрать">↩ В черновики</button>
+          </div>` : ''}
+        ${a.status === 'approved' ? `<div class="guru-card-attach">⏳ отправляю${a.asset_id ? ', файл заливается в Telegram, это может занять до минуты' : '…'}</div>` : ''}
+        ${a.status === 'failed' ? `
+          <div class="guru-actions">
+            <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Отметить как отклонённый">Отклонить</button>
+            <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="Попробовать отправить ещё раз">↻ Повторить</button>
+          </div>` : ''}
+      </div>`;
+    };
+    const msgHTML = (m) => {
+      if (m.tool_calls && m.tool_calls.length) {
+        const aid = m.tool_calls[0]?.action_id;
+        const a = aid && byId.get(aid);
+        if (a) return `<div class="guru-msg guru-msg-${escape(m.role)}"><div class="guru-bubble">${escape(m.content)}</div>${draftHTML(a)}</div>`;
+      }
+      return `<div class="guru-msg guru-msg-${escape(m.role)}"><div class="guru-bubble">${escape(m.content).replace(/\n/g,'<br>')}</div></div>`;
+    };
+    // Списки лидов: черновики первого касания из разных списков (ICP Radar 02.09 / 14.09)
+    // не смешиваются — чипы над лентой. Ключ = list_id, ответы лидам и прочее отдельно.
+    // Счётчик чипа = сколько осталось разобрать (в очереди уже не считаем).
+    const listKey = (a) => a.list_id ? `l${a.list_id}` : (a.trigger === 'incoming_reply' ? 'replies' : 'other');
+    const listLabel = (a) => a.list_id ? (a.list_name || `Список #${a.list_id}`) : (a.trigger === 'incoming_reply' ? 'Ответы' : 'Прочее');
+    const listGroups = new Map();
+    for (const a of live) {
+      const k = listKey(a);
+      const g = listGroups.get(k) || { key: k, label: listLabel(a), todo: 0, total: 0, maxId: 0 };
+      g.total += 1; if (a.status !== 'queued') g.todo += 1;
+      g.maxId = Math.max(g.maxId, a.id);
+      listGroups.set(k, g);
+    }
+    const groupsSorted = [...listGroups.values()].sort((x, y) => y.maxId - x.maxId);
+    let view = _guruView();
+    if (view !== 'all' && view !== 'chat' && !listGroups.has(view)) view = 'all';
+    const activeKey = (view === 'all' && listGroups.size === 1) ? groupsSorted[0].key : view;
+    const feed = view === 'all' ? feedLive : feedLive.filter(a => listKey(a) === view);
+    const chip = (key, label, count, title) => `<button class="guru-list-chip ${activeKey === key ? 'active' : ''}" data-action="guru-list-filter" data-key="${escape(key)}" title="${escape(title || label)}">${escape(label)}${count == null ? '' : ` · ${count}`}</button>`;
+    const chipsHTML = `
+      <div class="guru-lists" id="guru-lists">
+        ${listGroups.size > 1 ? chip('all', 'Все', feedLive.length) : ''}
+        ${groupsSorted.map(g => chip(g.key, chipLabel(g.label), g.todo || '✓', g.label + (g.todo ? '' : ': всё в листе ожидания'))).join('')}
+        ${listGroups.size === 0 ? chip('all', 'Черновики', 0) : ''}
+        <span class="guru-lists-gap"></span>
+        ${chip('chat', '💬 Чат', msgs.length || null, 'Задачи для Guru: «напиши @user…», «спроси X про цены»')}
+      </div>`;
+    const groupOf = view !== 'all' && view !== 'chat' ? listGroups.get(view) : null;
+    const feedEmpty = groupOf && groupOf.total
+      ? `в этом списке всё разобрано${groupOf.total ? `, ${groupOf.total} в листе ожидания` : ''}`
+      : queued.length ? `черновики разобраны, ${queued.length} в листе ожидания` : 'черновиков нет';
+    const feedHTML = feed.length
+      ? feed.map(a => draftHTML(a, { showList: view === 'all' })).join('')
+      : `<div class="guru-feed-empty">${escape(feedEmpty)}<br><span class="muted small">новые появятся из списков радара или из чата с Guru</span></div>`;
+    const chatHTML = `
+        ${msgs.length === 0 && actions.length === 0 ? `
+          <div class="empty"><div class="empty-ico" data-pix="ninja"></div>
+            <div class="empty-title">Привет, ${escape(ME.first_name)}!</div>
+            <div class="empty-sub">Пиши: «ответь @user привет», «спроси Х про цены», «напиши +7… демо завтра».<br>
+            Я сгенерю черновик — ты апрувнешь — улетит лиду.</div>
+          </div>` : ''}
+        ${msgs.map(msgHTML).join('')}`;
+    const settings = st?.settings || { default_mode: 'admin_approved', conv_counts: {}, modes: ['admin_approved','full_access','off'] };
+    const modeShort = ({admin_approved:'DRAFT', full_access:'AUTO', off:'OFF'}[settings.default_mode] || '?');
+    const modeColor = ({admin_approved:'gold', full_access:'red', off:'ink'}[settings.default_mode] || 'ink');
+    // По умолчанию свёрнут: в маленьком окне панель съедала половину экрана, а работа идёт в ленте.
+    let queueOpen = false;
+    try { queueOpen = localStorage.getItem('guru_queue_collapsed') === '0'; } catch {}
     const accLine = (acc) => {
       const win = acc.schedule ? `${acc.schedule.days} ${acc.schedule.time_from}–${acc.schedule.time_to}` : 'без окна';
       const state = acc.status !== 'active' ? `<b class="guru-queue-warn">${escape(acc.status)}</b>`
@@ -2247,13 +2213,26 @@ const screens = {
             <div class="guru-queue-sent-title">✓ ушло за 24 ч · ${sentRecent.length}${sentRecent.length >= 20 ? '+' : ''}</div>
             ${sentRecent.map(sentLine).join('')}
           </div>` : '';
-    const rowLine = (it) => `<div class="guru-queue-row" data-act-id="${it.id}">
-        <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
-        <span class="guru-queue-who">${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}</span>
-        <span class="guru-queue-eta">${escape(rowEta(it))}</span>
-        <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
-        <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
+    // Строка очереди раскрывается в редактор: текст можно поправить до отправки, правки сохраняются сами.
+    const rowLine = (it) => {
+      const a = byId.get(it.id);
+      const open = _guruQueueOpen.has(it.id);
+      const editor = !open ? '' : a ? `
+          <div class="guru-queue-edit">
+            ${guruMentionsSource(a.draft_text) ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
+            <textarea class="guru-draft" id="guru-draft-${a.id}" rows="1">${escape(a.draft_text || '')}</textarea>
+            <div class="guru-actions"><span class="guru-save-hint" id="guru-save-${a.id}">правки сохраняются сами</span></div>
+          </div>` : '<div class="muted small" style="padding:2px 0 6px">текст ещё грузится…</div>';
+      return `<div class="guru-queue-item ${open ? 'open' : ''}" data-act-id="${it.id}">
+        <div class="guru-queue-row">
+          <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
+          <button class="guru-queue-who" data-action="guru-queue-expand" data-id="${it.id}" title="${open ? 'Скрыть текст' : 'Показать и поправить текст'}"><span class="guru-queue-chev">${open ? '▾' : '▸'}</span> ${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}</button>
+          <span class="guru-queue-eta">${escape(rowEta(it))}</span>
+          <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
+          <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
+        </div>${editor}
       </div>`;
+    };
     const queueHTML = q && (q.total > 0 || (q.accounts||[]).length || sentRecent.length) ? `
       <div class="guru-queue ${queueOpen ? '' : 'collapsed'}" id="guru-queue">
         <div class="guru-queue-head" data-action="toggle-guru-queue" title="Свернуть/развернуть лист ожидания">
@@ -2273,31 +2252,28 @@ const screens = {
           ${sentHTML}
         </div>
       </div>` : '';
+    const headCount = `${pending.length} ${plural(pending.length, 'черновик', 'черновика', 'черновиков')}`
+      + (queued.length ? ` · ${queued.length} в очереди` : '')
+      + (queued.length && qPaused ? ' · ⏸ пауза' : queued.length && qRunning ? ' · ▶ идёт' : '');
     return `
-    <div class="screen guru-screen">
+    <div class="screen guru-screen guru-view-${view === 'chat' ? 'chat' : 'feed'}">
       <div class="head-row guru-head" id="guru-head">
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
-          <span class="muted small">${pending.length} pending${queued.length ? ` · ${queued.length} в очереди` : ''}${qPaused && (queued.length || q.total) ? ' · ⏸ пауза' : ''}</span>
+          <span class="muted small">${headCount}</span>
         </div>
       </div>
       ${queueHTML}
-      ${listsHTML}
+      ${chipsHTML}
       <div class="guru-log" id="guru-log">
-        ${msgs.length === 0 && actions.length === 0 ? `
-          <div class="empty"><div class="empty-ico" data-pix="ninja"></div>
-            <div class="empty-title">Привет, ${escape(ME.first_name)}!</div>
-            <div class="empty-sub">Пиши: «ответь @user привет», «спроси Х про цены», «напиши +7… демо завтра».<br>
-            Я сгенерю черновик — ты апрувнешь — улетит лиду.</div>
-          </div>` : ''}
-        ${(listFilter === 'all' ? msgs : []).map(msgHTML).join('')}
-        ${visibleLive.map(draftHTML).join('')}
+        ${view === 'chat' ? chatHTML : feedHTML}
       </div>
+      ${view === 'chat' ? `
       <div class="guru-input-bar">
         <textarea id="guru-input" rows="2" placeholder="Задача для Guru…"></textarea>
         <button class="btn primary" data-action="guru-send" title="Отправить задачу Guru — он сгенерит черновик"><span data-pix="send" style="display:inline-block;width:18px;height:18px"></span></button>
-      </div>
+      </div>` : ''}
     </div>`;
   },
 
@@ -2760,6 +2736,31 @@ async function refreshBadges() {
   } catch {}
 }
 
+const plural = (n, one, few, many) => {
+  const m10 = n % 10, m100 = n % 100;
+  return (m10 === 1 && m100 !== 11) ? one : (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) ? few : many;
+};
+/** Какой чип выбран в Guru: 'all' | 'l<list_id>' | 'replies' | 'other' | 'chat'. */
+const _guruView = () => { try { return localStorage.getItem('guru_list_filter') || 'all'; } catch { return 'all'; } };
+/** Раскрытые строки листа ожидания (id действий) — переживают перерисовку поллингом. */
+const _guruQueueOpen = new Set();
+// Костя: НИКОГДА не называть в сообщении, где найден контакт (чат/форум/«видел пост»), иначе лид
+// пожалуется и его выкинут из чата. Подсветка на карточке; те же паттерны в guru_list_drafts.py.
+const _GURU_SOURCE_RE = [
+  /\b(saw|seen|noticed|found|came across)\b[^\n]{0,60}\b(post|message|thread)s?\b/i,
+  /\bcame up in\b/i, /\byour post\b/i, /\bin the (chat|group|channel|forum)\b/i, /\b(chat|forum|community)\b/i,
+  /[Вв]идел[аи]?[^\n]{0,60}\sв\s+[A-ZА-ЯЁ]/, /(ваш|твой|вашему|вашего|твоему|твоего)\s+пост/i,
+  /\sв\s(чате|группе|канале|форуме|беседе)/i, /на форуме/i, /(^|\s)чат[аеу]?(?=[\s,.!?]|$)/i, /форум/i,
+  /high[- ]?risk forum/i, /igaming chat/i, /bd in web3/i, /processing russia/i,
+];
+const guruMentionsSource = (t) => !!t && _GURU_SOURCE_RE.some(re => re.test(t));
+/** Поле черновика растёт под текст: всё сообщение видно целиком, без внутренней прокрутки. */
+function _autoGrow(t) {
+  if (!t) return;
+  t.style.height = 'auto';
+  t.style.height = (t.scrollHeight + 2) + 'px';
+}
+
 let _guruHash = '';
 function _hashGuru(h) {
   // Хешируем минимально-достаточный набор полей: id и status у actions, id у messages.
@@ -2773,13 +2774,19 @@ function _hashGuru(h) {
 let _guruLoadSeq = 0;
 let _guruRenderedSeq = 0;
 
-/** Перерисовать Guru, сохранив набранный текст, фокус/каретку и прокрутку ленты. */
-function _renderGuruKeepInput(patch, scrollBottom) {
+/** Перерисовать Guru, сохранив набранный текст чата, недосохранённые правки в карточках,
+ *  фокус/каретку и прокрутку ленты. scroll: 'keep' | 'top' | 'bottom'. */
+function _renderGuruKeepInput(patch, scroll = 'keep') {
   const inpOld = document.getElementById('guru-input');
   const draft = inpOld?.value || '';
   const focused = document.activeElement?.id === 'guru-input';
   const caret = focused ? inpOld.selectionStart : null;
   const logTop = document.getElementById('guru-log')?.scrollTop;
+  // Правки в полях карточек: поллинг перерисовывает экран каждые 8 с, текст пропадать не должен.
+  const dirty = {};
+  document.querySelectorAll('textarea.guru-draft').forEach(t => {
+    if (t.value !== t.defaultValue) dirty[t.id] = { v: t.value, s: t.selectionStart, e: t.selectionEnd, f: document.activeElement === t };
+  });
   render('guru', { ...patch, _draft: draft });
   try {
     if (localStorage.getItem('guru_head_collapsed') === '1') {
@@ -2787,8 +2794,15 @@ function _renderGuruKeepInput(patch, scrollBottom) {
     }
   } catch {}
   requestAnimationFrame(() => {
+    for (const [id, d] of Object.entries(dirty)) {
+      const t = document.getElementById(id);
+      if (!t) continue;
+      t.value = d.v;
+      if (d.f) { t.focus(); try { t.setSelectionRange(d.s, d.e); } catch {} }
+    }
+    document.querySelectorAll('textarea.guru-draft').forEach(_autoGrow);
     const log = document.getElementById('guru-log');
-    if (log) log.scrollTop = scrollBottom ? log.scrollHeight : (logTop ?? log.scrollHeight);
+    if (log) log.scrollTop = scroll === 'bottom' ? log.scrollHeight : scroll === 'top' ? 0 : (logTop ?? 0);
     const inp = document.getElementById('guru-input');
     if (inp && draft) {
       inp.value = draft;
@@ -2829,7 +2843,9 @@ async function loadGuru(silent=false) {
     if (silent && newHash === _guruHash) return;   // ничего не изменилось — не дёргаем DOM
     _guruHash = newHash;
     _guruRenderedSeq = seq;
-    _renderGuruKeepInput({ messages: h.messages, actions: h.actions, settings, queue }, true);
+    // Чат листаем вниз к свежему при первом заходе; лента черновиков держит место, где ты стоял.
+    _renderGuruKeepInput({ messages: h.messages, actions: h.actions, settings, queue },
+                         !silent && _guruView() === 'chat' ? 'bottom' : 'keep');
   } catch (e) {
     if (seq < _guruRenderedSeq) return;
     if (!silent) {
@@ -2882,11 +2898,17 @@ async function guruApprove(id) {
     btns.forEach(b => { b.disabled = false; if (label) b.textContent = label; });
   };
 
+  // Текст берём из поля карточки: правки уходят одним тапом, без отдельного «Сохранить».
+  // Раньше approve брал текст из базы, и Костя терял правки.
+  const ta = document.getElementById(`guru-draft-${id}`);
+  const cur = (screenState.guru?.actions || []).find(a => a.id === id);
+  const txt = ta && !ta.disabled ? ta.value.trim() : '';
+  const changed = !!txt && (!cur || txt !== (cur.draft_text || '').trim());
   // Бэкенд ставит action в очередь и отвечает сразу: заливка видео в Telegram идёт
   // до минуты, и держать ради неё HTTP-запрос через туннель нельзя — рвётся.
   let r;
   try {
-    r = await API.guru.approve(id);
+    r = await API.guru.approve(id, changed ? txt : null);
   } catch (e) {
     _done();
     toast(`Не отправилось: ${(e.message || '').replace(/^\d+\s+/, '')}`);
@@ -3064,7 +3086,7 @@ async function guruQueueRun(el) {
     // иначе кнопка/плашки висят в старом состоянии, а при сбое загрузки — до следующего поллинга.
     if (r && currentScreen === 'guru') {
       _guruRenderedSeq = ++_guruLoadSeq;   // поллинг, стартовавший до POST, не перетрёт свежий рендер
-      _renderGuruKeepInput({ queue: r }, false);
+      _renderGuruKeepInput({ queue: r }, 'keep');
     } else if (screenState.guru && r) {
       screenState.guru.queue = r;
     }
@@ -3086,6 +3108,35 @@ async function guruEdit(id) {
     loadGuru(true);
   }
   catch (e) { toast(`Ошибка: ${e.message}`); }
+}
+
+/** Автосохранение правок черновика при уходе из поля (focusout). Кнопки «Сохранить» больше нет:
+ *  approve берёт текст из поля сам, а сюда попадают правки, после которых ты ушёл в другую карточку. */
+async function guruAutosave(ta) {
+  const id = parseInt((ta?.id || '').replace('guru-draft-', ''), 10);
+  if (!id || ta.disabled) return;
+  const txt = ta.value.trim();
+  if (!txt || txt === (ta.defaultValue || '').trim()) return;
+  const hint = () => document.getElementById(`guru-save-${id}`);
+  const h0 = hint(); if (h0) h0.textContent = 'сохраняю…';
+  try {
+    const r = await API.guru.edit(id, txt);
+    const a = (screenState.guru?.actions || []).find(x => x.id === id);
+    if (a) a.draft_text = r.draft_text;
+    // После перерисовки элемент мог смениться: ищем заново. Значение подменяем только если
+    // ты не начал править снова, иначе затёрли бы новый ввод (стилевой фильтр мог убрать точки/тире).
+    const t = document.getElementById(`guru-draft-${id}`);
+    if (t) {
+      if (t.value.trim() === txt) t.value = r.draft_text;
+      t.defaultValue = r.draft_text;
+      _autoGrow(t);
+    }
+    const h = hint();
+    if (h) { h.textContent = '✓ сохранено'; setTimeout(() => { if (h.textContent === '✓ сохранено') h.textContent = ''; }, 2500); }
+  } catch (e) {
+    const h = hint(); if (h) h.textContent = 'не сохранилось';
+    toast(`Не сохранилось: ${cleanErr(e)}`);
+  }
 }
 
 let _inboxHash = '';
@@ -3131,11 +3182,7 @@ async function openConv(cid) {
   } catch (e) { toast(`Ошибка: ${e.message}`); }
 }
 
-// ===== Loaders: deals/tasks/kb/analytics/stoplist/profile =====
-async function loadDeals() {
-  try { render('deals', { deals: await API.deals.list() }); }
-  catch (e) { render('deals', { deals: [] }); toast(`Ошибка: ${e.message}`); }
-}
+// ===== Loaders: tasks/kb/analytics/stoplist/profile =====
 async function loadTasks() {
   try { render('tasks', { tasks: await API.tasks.list('open') }); }
   catch (e) { render('tasks', { tasks: [] }); toast(`Ошибка: ${e.message}`); }
@@ -4020,7 +4067,6 @@ async function handleAction(action, el, e) {
     }
 
     // ===== CRM new actions =====
-    case 'goto-deals':     loadDeals(); break;
     case 'goto-tasks':     loadTasks(); break;
     case 'goto-kb':        loadKb(); break;
     case 'goto-analytics': loadAnalytics(); break;
@@ -4040,10 +4086,17 @@ async function handleAction(action, el, e) {
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
+    case 'guru-open-tg': openTgUser(el.dataset.uname || ''); break;
+    case 'guru-queue-expand': {
+      const id = parseInt(el.dataset.id, 10);
+      if (_guruQueueOpen.has(id)) _guruQueueOpen.delete(id); else _guruQueueOpen.add(id);
+      if (screenState.guru) _renderGuruKeepInput({}, 'keep');
+      break;
+    }
     case 'guru-list-filter': {
-      try { localStorage.setItem('guru_list_filter', el.dataset.key || 'all'); } catch {}
-      if (screenState.guru) render('guru', screenState.guru);
-      requestAnimationFrame(() => { const log = document.getElementById('guru-log'); if (log) log.scrollTop = log.scrollHeight; });
+      const key = el.dataset.key || 'all';
+      try { localStorage.setItem('guru_list_filter', key); } catch {}
+      if (screenState.guru) _renderGuruKeepInput({}, key === 'chat' ? 'bottom' : 'top');
       break;
     }
     case 'toggle-guru-queue': {
@@ -4303,58 +4356,6 @@ async function handleAction(action, el, e) {
       break;
     }
 
-    // Deals
-    case 'new-deal': {
-      // Загрузим списки лидов чтобы показать селектор
-      try {
-        const lists = await API.lists.list();
-        if (!lists.length) { toast('Сначала создай хотя бы один список лидов'); return; }
-        // Берём всех лидов из всех списков
-        const allLeads = [];
-        for (const l of lists) {
-          const ls = await API.lists.leads(l.id).catch(() => []);
-          ls.forEach(x => allLeads.push(x));
-        }
-        if (!allLeads.length) { toast('Нет лидов чтобы привязать'); return; }
-        render('deal_edit', { deal: {}, leads: allLeads });
-      } catch (e) { toast(`Ошибка: ${e.message}`); }
-      break;
-    }
-    case 'edit-deal': {
-      const id = parseInt(el.dataset.id, 10);
-      const deal = (screenState.deals?.deals || []).find(d => d.id === id);
-      if (deal) render('deal_edit', { deal });
-      break;
-    }
-    case 'save-deal': {
-      const id = parseInt(el.dataset.id, 10);
-      const data = {
-        name: document.getElementById('d-name').value.trim(),
-        stage: document.getElementById('d-stage').value,
-        value: parseInt(document.getElementById('d-value').value || '0', 10),
-        close_date: document.getElementById('d-close').value ? new Date(document.getElementById('d-close').value).toISOString() : null,
-        note: document.getElementById('d-note').value.trim() || null,
-      };
-      if (!data.name) { toast('Название обязательно'); return; }
-      try {
-        if (id) {
-          await API.deals.update(id, data);
-        } else {
-          data.lead_id = parseInt(document.getElementById('d-lead').value, 10);
-          await API.deals.create(data);
-        }
-        toast('✅ Сохранено'); loadDeals();
-      } catch (e) { toast(`Ошибка: ${e.message}`); }
-      break;
-    }
-    case 'delete-deal': {
-      const id = parseInt(el.dataset.id, 10);
-      const yes = await confirm_('Удалить сделку?');
-      if (!yes) return;
-      try { await API.deals.remove(id); loadDeals(); } catch (e) { toast(`Ошибка: ${e.message}`); }
-      break;
-    }
-
     // KB
     case 'new-kb':  render('kb_edit', { kb: {} }); break;
     case 'edit-kb': {
@@ -4477,7 +4478,16 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && document.getElementById('reply-input') === document.activeElement) {
     handleAction('send-reply', document.querySelector('[data-action="send-reply"]'));
   }
+  // Ctrl/⌘+Enter в поле черновика Guru = в очередь (текст уходит из поля)
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target.matches?.('textarea.guru-draft')) {
+    const id = parseInt(e.target.id.replace('guru-draft-', ''), 10);
+    const a = (screenState.guru?.actions || []).find(x => x.id === id);
+    if (a && a.status === 'pending') { e.preventDefault(); guruApprove(id); }
+  }
 });
+// Поля черновиков Guru: растут под текст, правки сохраняются при уходе из поля
+document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.guru-draft')) _autoGrow(e.target); });
+document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.guru-draft')) guruAutosave(e.target); });
 
 function goBack() {
   if (navStack.length) {
