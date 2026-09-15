@@ -832,6 +832,17 @@ button.guru-queue-sent-row { cursor: pointer; }
 .prompt-input:focus { box-shadow: inset 0 0 0 1px var(--ink); }
 textarea.prompt-input { resize: vertical; min-height: 120px; line-height: 1.45; }
 
+/* Контакт с этим лидом уже был — предупреждение до апрува */
+.guru-card-dup {
+  font-size: 11px; color: var(--ink); background: rgba(229,160,42,.18);
+  border-left: 3px solid var(--gold); padding: 4px 8px; margin-bottom: 6px;
+}
+/* Spintax: показываем, как текст развернётся у конкретного лида */
+.guru-card-preview {
+  font-size: 11px; color: var(--ink-2); font-style: italic;
+  padding: 3px 0 5px; white-space: pre-wrap;
+}
+
 /* Карточка лида из Monday: полоска над перепиской */
 .md-card {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;

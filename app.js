@@ -2208,6 +2208,10 @@ const screens = {
         ${a.monday_item_id ? `<div class="md-mini">Monday: ${escape(a.company || 'карточка лида')} <button class="md-mini-link" data-action="md-open" data-item="${escape(a.monday_item_id)}" title="Открыть карточку на борде">↗</button></div>` : ''}
         ${a.asset_id ? `<div class="guru-card-attach">📎 файл #${a.asset_id} уйдёт вместе с текстом</div>` : ''}
         ${warn ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
+        ${(a.dup || []).length ? `<div class="guru-card-dup">⚠ ${escape(a.dup.join(' · '))}</div>` : ''}
+        ${editable && /\{[^{}]*\|[^{}]*\}/.test(text)
+          ? `<div class="guru-card-preview">каждому уйдёт свой вариант, например: ${escape(text.replace(/\{([^{}]+)\}/g, (_, g) => g.split('|')[0]))}</div>`
+          : ''}
         <textarea class="guru-draft" id="guru-draft-${a.id}" rows="1" ${editable ? '' : 'disabled'}>${escape(text)}</textarea>
         ${a.error ? `<div class="guru-card-error">⚠️ ${escape(a.error)}</div>` : ''}
         ${a.status === 'pending' ? `
