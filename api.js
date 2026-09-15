@@ -188,6 +188,8 @@ const API = {
     reject:    (id)                => API.req('POST', `/api/guru/actions/${id}/reject`),
     // «уже писал с другого аккаунта»: закрыть черновик + пометить лида do_not_contact
     alreadyContacted: (id)         => API.req('POST', `/api/guru/actions/${id}/already_contacted`),
+    // Приложить файл к черновику (asset_id из /api/assets) или убрать (null)
+    setAsset:  (id, asset_id)      => API.req('POST', `/api/guru/actions/${id}/asset`, { asset_id }),
     edit:      (id, draft_text)    => API.req('POST', `/api/guru/actions/${id}/edit`, { draft_text }),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),
     queue:     ()                  => API.req('GET',  '/api/guru/queue'),

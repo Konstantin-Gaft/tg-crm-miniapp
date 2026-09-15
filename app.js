@@ -206,7 +206,7 @@ async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
     toast(`Скопировано: ${text}`);
-  } catch { prompt_('Скопируйте вручную:', text); }
+  } catch { await prompt_('Скопируйте вручную:', text); }
 }
 
 // Search-debounce — переиспользуем для всех экранов
@@ -280,7 +280,39 @@ function toast(msg) {
   }
 }
 const confirm_ = (msg) => new Promise(r => tg?.showConfirm?.(msg, r) || r(window.confirm(msg)));
-const prompt_ = (msg, def='') => window.prompt(msg, def);
+// window.prompt внутри Telegram Mini App не работает (клиент его блокирует): из-за этого
+// «＋ папка» молча ничего не делала. Своё окно ввода на тех же .modal-* классах.
+function prompt_(msg, def = '') {
+  return new Promise((resolve) => {
+    document.getElementById('prompt-sheet')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'prompt-sheet';
+    wrap.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-sheet">
+          <div class="modal-title" style="white-space:pre-wrap">${escape(msg)}</div>
+          <input id="prompt-sheet-input" class="prompt-input" value="${escape(def)}">
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn ghost" style="flex:1" data-prompt="cancel">Отмена</button>
+            <button class="btn primary" style="flex:1" data-prompt="ok">Готово</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const inp = wrap.querySelector('#prompt-sheet-input');
+    const done = (val) => { wrap.remove(); resolve(val); };
+    wrap.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-prompt]');
+      if (btn) { done(btn.dataset.prompt === 'ok' ? inp.value : null); return; }
+      if (e.target.classList.contains('modal-backdrop')) done(null);
+    });
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); done(inp.value); }
+      if (e.key === 'Escape') done(null);
+    });
+    requestAnimationFrame(() => { inp.focus(); inp.select(); });
+  });
+}
 const openLink = (url) => tg?.openTelegramLink ? tg.openTelegramLink(url.replace('https://t.me/', 'https://t.me/')) : window.open(url, '_blank');
 const openTgUser = (uname) => {
   const link = `https://t.me/${uname.replace('@', '')}`;
@@ -1619,6 +1651,7 @@ const screens = {
         </div>
         ` : ''}
         <div id="attach-status" class="muted small" style="display:none;padding:6px 10px;border-top:1px solid var(--border);background:var(--bg)"></div>
+        <div id="attach-chip" class="attach-chip" style="display:none"></div>
         <div class="conv-input">
           <button class="icon-btn" data-action="attach-file" data-id="${st.conv_id}" title="Прикрепить файл" data-pix="plus"></button>
           <input type="file" id="attach-input" style="display:none"
@@ -2165,6 +2198,7 @@ const screens = {
         ${a.status === 'pending' ? `
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
+            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="${a.asset_id ? 'Убрать файл' : 'Приложить фото или видео, уйдёт одним сообщением с текстом'}">${a.asset_id ? '📎 убрать' : '📎'}</button>
             ${isReply ? '' : `<button class="btn sm ghost" data-action="guru-skip" data-id="${a.id}" title="Уже писал ему с другого аккаунта: убрать из списка и больше не предлагать">уже писал</button>`}
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик, не отправлять">Отклонить</button>
             <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter">✓ В очередь</button>
@@ -2172,6 +2206,7 @@ const screens = {
         ${a.status === 'queued' ? `
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
+            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="${a.asset_id ? 'Убрать файл' : 'Приложить фото или видео, уйдёт одним сообщением с текстом'}">${a.asset_id ? '📎 убрать' : '📎'}</button>
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Убрать из очереди и отклонить">Отклонить</button>
             <button class="btn sm" data-action="guru-unqueue" data-id="${a.id}" title="Вернуть в черновики, из очереди убрать">↩ В черновики</button>
           </div>` : ''}
@@ -2311,6 +2346,7 @@ const screens = {
       + (queued.length && qPaused ? ' · ⏸ пауза' : queued.length && qRunning ? ' · ▶ идёт' : '');
     return `
     <div class="screen guru-screen guru-view-${view === 'chat' ? 'chat' : 'feed'}">
+      <input type="file" id="guru-attach-input" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
       <div class="head-row guru-head" id="guru-head">
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
@@ -2994,6 +3030,19 @@ async function guruApprove(id) {
 // Один multipart-запрос через туннель держит около 5 МБ — 20-МБ видео так не уходило
 // вовсе. Крупный файл сначала льётся в библиотеку кусками по 2 МБ (тот же путь, что
 // и «Файлы Guru»), потом бэк отправляет его в Telegram фоном, а мы следим по job_id.
+// Выбранный файл ждёт отправки вместе с текстом: скрепка больше не шлёт его сразу,
+// иначе подпись приходилось набирать заранее и файл улетал без неё.
+let _pendingAttach = null;
+function _renderAttachChip() {
+  const box = document.getElementById('attach-chip');
+  if (!box) return;
+  if (!_pendingAttach) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'flex';
+  box.innerHTML = `<span class="attach-chip-name">📎 ${escape(_pendingAttach.name)}</span>`
+    + `<span class="muted small">${(_pendingAttach.size / 1024 / 1024).toFixed(1)} МБ</span>`
+    + '<button class="btn ghost" data-action="attach-clear" title="Убрать файл">✕</button>';
+}
+
 const ATTACH_DIRECT_LIMIT = 4 * 1024 * 1024;
 const ASSET_EXT = /\.(mp4|mov|webm|mkv|avi|jpg|jpeg|png|webp|gif|pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i;
 
@@ -3070,6 +3119,35 @@ async function guruSkip(id) {
     toast(`✓ убрал из списка${r?.leads_flagged ? ', писать больше не будем' : ''}`);
     loadGuru(true);
   } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+}
+
+/** Скрепка в карточке: файл льётся в библиотеку и цепляется к черновику. Уйдёт одним
+ *  сообщением, текст черновика станет подписью. Повторный тап отцепляет файл. */
+async function guruAttach(id) {
+  const cur = (screenState.guru?.actions || []).find(x => x.id === id);
+  const hint = () => document.getElementById(`guru-save-${id}`);
+  const say = (t) => { const h = hint(); if (h) h.textContent = t; };
+  if (cur?.asset_id) {
+    try { await API.guru.setAsset(id, null); toast('Файл убран'); loadGuru(true); }
+    catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+    return;
+  }
+  const input = document.getElementById('guru-attach-input');
+  if (!input) return;
+  input.onchange = async () => {
+    const f = input.files[0];
+    input.value = '';
+    if (!f) return;
+    try {
+      say(`загружаю ${f.name}…`);
+      const asset = await API.assets.upload(f, f.name, null, null, (p) => say(`загружаю ${f.name}… ${p}%`));
+      await API.guru.setAsset(id, asset.id);
+      say('✓ файл приложен');
+      _guruHash = '';
+      loadGuru(true);
+    } catch (e) { say(''); toast(`Не приложилось: ${cleanErr(e)}`); }
+  };
+  input.click();
 }
 async function guruUnqueue(id) {
   try { await API.guru.unqueue(id); toast('↩ Вернул в черновики'); loadGuru(true); }
@@ -3263,6 +3341,7 @@ async function loadInbox(silent=false) {
 
 // Уход из диалога обратно в список: свой поллинг диалога гасим, инбоксовый возвращаем
 function backToInbox() {
+  _pendingAttach = null;          // выбранный, но не отправленный файл не тащим в другой диалог
   loadInbox();
   startPoll(() => { loadInbox(true); refreshBadges(); }, 15000);
 }
@@ -3299,6 +3378,7 @@ async function pollConv(cid) {
 }
 
 async function openConv(cid) {
+  _pendingAttach = null;
   try {
     const messages = await API.inbox.messages(cid);
     const conv = (screenState.inbox?.conversations || []).find(c => c.id === cid);
@@ -3358,7 +3438,7 @@ function _applyFolderLocal(convIds, fid, add) {
 // Чип полосы папок: '' — все, 'new' — создать, id — выбрать; повторный клик по активной = меню папки
 async function pickInboxFolder(raw) {
   if (raw === 'new') {
-    const name = (prompt_('Название папки:', '') || '').trim();
+    const name = (await prompt_('Название папки:', '') || '').trim();
     if (!name) return;
     try {
       const f = await API.inbox.folderCreate(name);
@@ -3547,11 +3627,11 @@ async function handleAction(action, el, e) {
           tg.showScanQrPopup({ text: 'Наведите на QR-код Telegram-чата' }, (text) => { handleQr(text); return true; });
         } catch (e) {
           // fallback на ручной ввод
-          const manual = prompt_('Не получилось открыть сканер. Вставьте инвайт-ссылку:', '');
+          const manual = await prompt_('Не получилось открыть сканер. Вставьте инвайт-ссылку:', '');
           if (manual) handleQr(manual);
         }
       } else {
-        const manual = prompt_('Сканер недоступен в этой версии TG. Вставьте инвайт-ссылку:', '');
+        const manual = await prompt_('Сканер недоступен в этой версии TG. Вставьте инвайт-ссылку:', '');
         if (manual) handleQr(manual);
       }
       break;
@@ -3976,7 +4056,7 @@ async function handleAction(action, el, e) {
     }
     case 'ib-folder-new': {
       const ids = (el.dataset.convs || '').split(',').filter(Boolean).map(Number);
-      const name = (prompt_('Название папки:', '') || '').trim();
+      const name = (await prompt_('Название папки:', '') || '').trim();
       if (!name) break;
       try {
         const f = await API.inbox.folderCreate(name);
@@ -3991,7 +4071,7 @@ async function handleAction(action, el, e) {
     case 'ib-folder-rename': {
       const id = parseInt(el.dataset.id, 10);
       const cur = (_foldersCache || []).find(f => f.id === id);
-      const name = (prompt_('Новое имя папки:', cur?.name || '') || '').trim();
+      const name = (await prompt_('Новое имя папки:', cur?.name || '') || '').trim();
       if (!name || name === cur?.name) { closeInboxSheet(); break; }
       try {
         await API.inbox.folderRename(id, name);
@@ -4042,26 +4122,36 @@ async function handleAction(action, el, e) {
     case 'open-conv': openConv(parseInt(el.dataset.id, 10)); break;
     case 'conv-back': backToInbox(); break;
     case 'send-reply': {
-      const text = document.getElementById('reply-input').value.trim();
+      const inp = document.getElementById('reply-input');
+      const text = (inp?.value || '').trim();
       const cid = parseInt(el.dataset.id, 10);
+      // Файл уходит вместе с набранным текстом (как в Telegram), а не отдельным сообщением
+      if (_pendingAttach) {
+        const f = _pendingAttach;
+        _pendingAttach = null; _renderAttachChip();
+        if (inp) inp.value = '';
+        await sendAttachment(cid, f, text);
+        break;
+      }
       if (!text) return;
       try { await API.inbox.reply(cid, text); openConv(cid); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
     case 'attach-file': {
-      const cid = parseInt(el.dataset.id, 10);
       const input = document.getElementById('attach-input');
-      input.onchange = async () => {
+      input.onchange = () => {
         const f = input.files[0];
         input.value = '';                       // иначе повторный выбор того же файла не даст change
         if (!f) return;
-        const caption = document.getElementById('reply-input').value.trim();
-        await sendAttachment(cid, f, caption);
+        _pendingAttach = f;                     // ждёт кнопки «отправить» вместе с подписью
+        _renderAttachChip();
+        document.getElementById('reply-input')?.focus();
       };
       input.click();
       break;
     }
+    case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
 
     case 'contact-support': openTgUser(SUPPORT); break;
 
@@ -4092,7 +4182,7 @@ async function handleAction(action, el, e) {
     }
     case 'idea-add-note': {
       const id = parseInt(el.dataset.id, 10);
-      const note = prompt_('Заметка к идее:', '');
+      const note = await prompt_('Заметка к идее:', '');
       if (note === null) return;
       try {
         await API.ideas.adminUpdate(id, { admin_note: note });
@@ -4366,6 +4456,7 @@ async function handleAction(action, el, e) {
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
     case 'guru-skip':    guruSkip(parseInt(el.dataset.id, 10)); break;
+    case 'guru-attach':  guruAttach(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
     case 'guru-open-tg': openTgUser(el.dataset.uname || ''); break;
@@ -4582,7 +4673,7 @@ async function handleAction(action, el, e) {
     case 'conv-snooze': {
       const cid = parseInt(el.dataset.id, 10);
       const opts = ['до завтра', 'на 3 дня', 'на неделю', 'на 2 недели'];
-      const choice = prompt_(`Snooze на:\n1) ${opts[0]}\n2) ${opts[1]}\n3) ${opts[2]}\n4) ${opts[3]}\n\nВведи номер 1-4:`, '2');
+      const choice = await prompt_(`Snooze на:\n1) ${opts[0]}\n2) ${opts[1]}\n3) ${opts[2]}\n4) ${opts[3]}\n\nВведи номер 1-4:`, '2');
       if (!choice) return;
       const days = ({1:1, 2:3, 3:7, 4:14})[parseInt(choice,10)] || 3;
       const until = new Date(Date.now() + days*24*3600*1000).toISOString();
@@ -4593,7 +4684,7 @@ async function handleAction(action, el, e) {
     case 'ib-bulk-reply': {
       const ids = screenState.inbox?.selected || [];
       if (!ids.length) return;
-      const text = prompt_(`Один и тот же текст в ${ids.length} переписок:`, '');
+      const text = await prompt_(`Один и тот же текст в ${ids.length} переписок:`, '');
       if (!text) return;
       const yes = await confirm_(`Точно отправить «${text.slice(0,60)}…» в ${ids.length} чатов?`);
       if (!yes) return;
@@ -4608,9 +4699,9 @@ async function handleAction(action, el, e) {
 
     // Tasks
     case 'new-task': {
-      const text = prompt_('Что сделать?', '');
+      const text = await prompt_('Что сделать?', '');
       if (!text) return;
-      const when = prompt_('Когда (дата YYYY-MM-DD или сегодня/завтра/+3д):', 'завтра');
+      const when = await prompt_('Когда (дата YYYY-MM-DD или сегодня/завтра/+3д):', 'завтра');
       const due = parseDueDate(when);
       if (!due) { toast('Не понял дату'); return; }
       try { await API.tasks.create({ text, due_date: due }); toast('✅ Задача создана'); loadTasks(); }

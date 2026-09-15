@@ -863,6 +863,24 @@ button.guru-queue-sent-row { cursor: pointer; }
 .guru-list-chip.active { background: var(--ink); color: var(--card); }
 .guru-list-chip:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
+/* Своё окно ввода вместо window.prompt (в Telegram Mini App он не работает) */
+.prompt-input {
+  width: 100%; margin-top: 10px; padding: 10px 12px;
+  border: 2px solid var(--ink); border-radius: 0; background: var(--card); color: var(--ink);
+  font-family: var(--font-ui); font-size: 15px; outline: 0;
+}
+.prompt-input:focus { box-shadow: inset 0 0 0 1px var(--ink); }
+
+/* Прикреплённый файл ждёт отправки вместе с текстом (как в Telegram) */
+.attach-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; background: var(--gold); color: var(--ink);
+  border-top: 2px solid var(--ink);
+  font-family: var(--font-ui); font-size: 12px; font-weight: 600;
+}
+.attach-chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-chip .btn { padding: 2px 8px; font-size: 12px; box-shadow: none; border-width: 2px; }
+
 /* ============================ PIX ICON STAMPS ============================ */
 .pix-icon {
   display: inline-flex; align-items: center; justify-content: center;
