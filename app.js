@@ -4800,12 +4800,6 @@ async function handleAction(action, el, e) {
 
 // ===== Event delegation =====
 document.addEventListener('click', (e) => {
-  // Settings gear button (top-right) → ведёт во вкладку «Ещё»
-  if (e.target.id === 'settings-btn' || e.target.closest('#settings-btn')) {
-    stopPoll();
-    render('more');
-    return;
-  }
   const tab = e.target.closest('.tab');
   if (tab) {
     const name = tab.dataset.screen;
@@ -4895,19 +4889,6 @@ if (tg) {
 }
 // Изначальный hydrate (tabbar + всё что в HTML)
 _hydratePixIcons();
-
-// Topbar collapse — состояние в localStorage
-const _topbar = document.getElementById('topbar');
-const _toggleBtn = document.getElementById('topbar-toggle');
-function _setTopbarCollapsed(c) {
-  _topbar?.classList.toggle('collapsed', c);
-  if (_toggleBtn) _toggleBtn.textContent = c ? '▾' : '▴';
-  try { localStorage.setItem('topbar_collapsed', c ? '1' : '0'); } catch {}
-}
-_setTopbarCollapsed(localStorage.getItem('topbar_collapsed') === '1');
-_toggleBtn?.addEventListener('click', () => {
-  _setTopbarCollapsed(!_topbar.classList.contains('collapsed'));
-});
 
 // Узнаём, админ ли (для показа пункта «Админка · идеи» в Ещё)
 API.me().then(r => {
