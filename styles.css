@@ -830,6 +830,16 @@ button.guru-queue-sent-row { cursor: pointer; }
   font-family: var(--font-ui); font-size: 15px; outline: 0;
 }
 .prompt-input:focus { box-shadow: inset 0 0 0 1px var(--ink); }
+textarea.prompt-input { resize: vertical; min-height: 120px; line-height: 1.45; }
+
+/* Правка отправленного: карандаш в углу своего пузыря + пометка «изм.» */
+.msg-edit {
+  background: transparent; border: 0; padding: 0 6px 0 0;
+  color: var(--ink-2); opacity: .55; cursor: pointer;
+  font-size: 13px; line-height: 1;
+}
+.msg-edit:hover { opacity: 1; }
+.conv-edited { opacity: .6; margin-right: 4px; font-style: italic; }
 
 /* Прикреплённый файл ждёт отправки вместе с текстом (как в Telegram) */
 .attach-chip {

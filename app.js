@@ -282,16 +282,21 @@ function toast(msg) {
 const confirm_ = (msg) => new Promise(r => tg?.showConfirm?.(msg, r) || r(window.confirm(msg)));
 // window.prompt внутри Telegram Mini App не работает (клиент его блокирует): из-за этого
 // «＋ папка» молча ничего не делала. Своё окно ввода на тех же .modal-* классах.
-function prompt_(msg, def = '') {
+function prompt_(msg, def = '', opts = {}) {
   return new Promise((resolve) => {
     document.getElementById('prompt-sheet')?.remove();
     const wrap = document.createElement('div');
     wrap.id = 'prompt-sheet';
+    // multiline — для длинных текстов (правка отправленного сообщения): Enter переносит строку,
+    // отправляет Ctrl/⌘+Enter или кнопка
+    const field = opts.multiline
+      ? `<textarea id="prompt-sheet-input" class="prompt-input" rows="6">${escape(def)}</textarea>`
+      : `<input id="prompt-sheet-input" class="prompt-input" value="${escape(def)}">`;
     wrap.innerHTML = `
       <div class="modal-backdrop">
         <div class="modal-sheet">
           <div class="modal-title" style="white-space:pre-wrap">${escape(msg)}</div>
-          <input id="prompt-sheet-input" class="prompt-input" value="${escape(def)}">
+          ${field}
           <div style="display:flex;gap:8px;margin-top:12px">
             <button class="btn ghost" style="flex:1" data-prompt="cancel">Отмена</button>
             <button class="btn primary" style="flex:1" data-prompt="ok">Готово</button>
@@ -307,10 +312,15 @@ function prompt_(msg, def = '') {
       if (e.target.classList.contains('modal-backdrop')) done(null);
     });
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); done(inp.value); }
+      if (e.key === 'Enter' && (!opts.multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); done(inp.value); }
       if (e.key === 'Escape') done(null);
     });
-    requestAnimationFrame(() => { inp.focus(); inp.select(); });
+    requestAnimationFrame(() => {
+      inp.focus();
+      // в длинном тексте курсор в конец, в однострочном — выделяем всё, чтобы перебить одним вводом
+      if (opts.multiline) inp.setSelectionRange(inp.value.length, inp.value.length);
+      else inp.select();
+    });
   });
 }
 const openLink = (url) => tg?.openTelegramLink ? tg.openTelegramLink(url.replace('https://t.me/', 'https://t.me/')) : window.open(url, '_blank');
@@ -1634,11 +1644,14 @@ const screens = {
             lastDate = day;
             const out = m.direction === 'out';
             const media = isMedia(m.text);
+            // Telegram даёт править своё сообщение 48 часов; подпись к файлу не трогаем
+            const age = Date.now() - (parseUTC(m.sent_at)?.getTime() || 0);
+            const canEdit = out && !media && age < 48 * 3600 * 1000;
             return (showDate ? `<div class="conv-date">${day}</div>` : '') + `
               <div class="conv-row ${out ? 'out' : 'in'}">
                 <div class="conv-bubble ${out ? 'out' : 'in'} ${media ? 'media' : ''}">
                   ${media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
-                  <div class="conv-time">${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
+                  <div class="conv-time">${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
                 </div>
               </div>`;
           }).join('')}
@@ -4152,6 +4165,19 @@ async function handleAction(action, el, e) {
       break;
     }
     case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
+    // Исправить уже отправленное — правка уходит и в Telegram (окно 48 часов), и в базу
+    case 'msg-edit': {
+      const mid = parseInt(el.dataset.id, 10);
+      const cid = parseInt(el.dataset.cid, 10);
+      const cur = (screenState.conv?.messages || []).find(m => m.id === mid)?.text || '';
+      const next = await prompt_('Исправить отправленное сообщение:', cur, { multiline: true });
+      if (next === null) return;
+      const text = next.trim();
+      if (!text || text === cur.trim()) return;
+      try { await API.inbox.editMessage(cid, mid, text); toast('Исправлено'); openConv(cid); }
+      catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
 
     case 'contact-support': openTgUser(SUPPORT); break;
 
