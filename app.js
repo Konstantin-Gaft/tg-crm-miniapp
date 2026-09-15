@@ -4773,6 +4773,13 @@ document.addEventListener('keydown', (e) => {
 // Поля черновиков Guru: растут под текст, правки сохраняются при уходе из поля
 document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.guru-draft')) _autoGrow(e.target); });
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.guru-draft')) guruAutosave(e.target); });
+// Ширина изменилась (поворот телефона, всплывшая клавиатура, окно на десктопе): высота полей
+// посчитана под прежнюю ширину, и перетёкший на новые строки текст прячется под кнопками.
+let _growTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_growTimer);
+  _growTimer = setTimeout(() => document.querySelectorAll('textarea.guru-draft').forEach(_autoGrow), 120);
+});
 
 function goBack() {
   const fromConv = currentScreen === 'conv';
