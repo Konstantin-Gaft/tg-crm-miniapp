@@ -860,6 +860,11 @@ textarea.prompt-input { resize: vertical; min-height: 120px; line-height: 1.45; 
   max-width: 45%;
 }
 .md-next { font-family: var(--font-num); color: var(--ink-2); }
+/* Вкладка борда: после первого касания Guru карточка переезжает в «Guru Outreach» */
+.md-group {
+  font-size: 11px; color: var(--ink-2); max-width: 30%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 /* Та же связь в карточке черновика — без запроса к борду, по данным из payload */
 .md-mini { font-size: 11px; color: var(--ink-2); margin-bottom: 6px; }
 .md-mini-link {

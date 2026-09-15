@@ -3423,6 +3423,7 @@ function _mdRender(c) {
     .map(s => `<option value="${escape(s)}"${s === c.stage ? ' selected' : ''}>${escape(s)}</option>`).join('');
   box.innerHTML = `
     <select id="md-stage" class="md-stage" title="Стадия сделки в Monday">${opts}</select>
+    ${c.group ? `<span class="md-group" title="Вкладка борда, где лежит карточка">${escape(c.group)}</span>` : ''}
     <span class="md-next" title="Next Touch">${c.next_touch ? escape(c.next_touch) : 'без даты'}</span>
     <button class="btn sm ghost" data-action="md-next" data-days="0" title="Next Touch — сегодня">сегодня</button>
     <button class="btn sm ghost" data-action="md-next" data-days="3" title="Next Touch — через 3 дня">+3д</button>
