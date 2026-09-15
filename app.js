@@ -1637,6 +1637,7 @@ const screens = {
           <button class="icon-btn" data-action="conv-stoplist" data-tg="${st.lead_tg_id || ''}" title="В стоп-лист" data-pix="ban"></button>
           <button class="icon-btn" data-action="conv-delete" data-id="${st.conv_id}" title="Удалить переписку" data-pix="trash" style="color:var(--red)"></button>
         </div>
+        <div id="md-card" class="md-card"><span class="muted small">Monday: смотрю карточку…</span></div>
         <div id="msg-list" class="conv-body">
           ${msgs.map(m => {
             const day = dateLabel(m.sent_at);
@@ -2204,6 +2205,7 @@ const screens = {
           <div class="guru-card-right">${tag}${meta}</div>
         </div>
         ${isReply && a.intent ? `<div class="guru-card-intent"><span class="muted small">Входящее:</span> «${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
+        ${a.monday_item_id ? `<div class="md-mini">Monday: ${escape(a.company || 'карточка лида')} <button class="md-mini-link" data-action="md-open" data-item="${escape(a.monday_item_id)}" title="Открыть карточку на борде">↗</button></div>` : ''}
         ${a.asset_id ? `<div class="guru-card-attach">📎 файл #${a.asset_id} уйдёт вместе с текстом</div>` : ''}
         ${warn ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
         <textarea class="guru-draft" id="guru-draft-${a.id}" rows="1" ${editable ? '' : 'disabled'}>${escape(text)}</textarea>
@@ -3382,6 +3384,7 @@ async function pollConv(cid) {
   const focused = document.activeElement === inpOld;
   const caret = focused ? inpOld.selectionStart : null;
   render('conv', { ...screenState.conv, messages });
+  _mdRender(_mdCard);        // перерисовка затирает полоску Monday — возвращаем без запроса
   const ml2 = document.getElementById('msg-list');
   if (ml2) ml2.scrollTop = atBottom ? ml2.scrollHeight : keepTop;
   const inp = document.getElementById('reply-input');
@@ -3390,8 +3393,53 @@ async function pollConv(cid) {
   if (inp && focused) { inp.focus(); if (caret != null) try { inp.setSelectionRange(caret, caret); } catch {} }
 }
 
+// ===== Monday: карточка лида над перепиской =====
+const MONDAY_BOARD = 'https://bitok-aml.monday.com/boards/9027825117';
+let _mdCard = null;          // последняя загруженная карточка (item_id, stage, next_touch…)
+let _mdStages = null;        // лейблы стадий борда, грузим один раз за сессию
+
+function _mdRender(c) {
+  const box = document.getElementById('md-card');
+  if (!box) return;
+  if (!c || !c.found) {
+    box.classList.add('empty');
+    box.innerHTML = `<span class="muted small">${escape(c?.error || 'лида нет на борде Monday')}</span>`;
+    return;
+  }
+  box.classList.remove('empty');
+  const opts = (_mdStages || [c.stage]).filter(Boolean)
+    .map(s => `<option value="${escape(s)}"${s === c.stage ? ' selected' : ''}>${escape(s)}</option>`).join('');
+  box.innerHTML = `
+    <select id="md-stage" class="md-stage" title="Стадия сделки в Monday">${opts}</select>
+    <span class="md-next" title="Next Touch">${c.next_touch ? escape(c.next_touch) : 'без даты'}</span>
+    <button class="btn sm ghost" data-action="md-next" data-days="0" title="Next Touch — сегодня">сегодня</button>
+    <button class="btn sm ghost" data-action="md-next" data-days="3" title="Next Touch — через 3 дня">+3д</button>
+    <button class="btn sm ghost" data-action="md-next" data-days="7" title="Next Touch — через неделю">+7д</button>
+    <button class="btn sm ghost" data-action="md-note" title="Комментарий в карточку">заметка</button>
+    <button class="btn sm ghost" data-action="md-open" data-item="${escape(c.item_id)}" title="Открыть карточку на борде">↗</button>`;
+}
+
+async function loadMondayCard(username, company) {
+  const box = document.getElementById('md-card');
+  if (!box) return;
+  try {
+    if (!_mdStages) {
+      _mdStages = await API.monday.stages().then(r => r.stages).catch(() => null);
+    }
+    const q = {};
+    if (username) q.username = username;
+    if (company) q.company = company;
+    _mdCard = Object.keys(q).length ? await API.monday.card(q) : { found: false };
+    _mdRender(_mdCard);
+  } catch (e) {
+    _mdCard = null;
+    _mdRender({ found: false, error: `Monday: ${e.message}` });
+  }
+}
+
 async function openConv(cid) {
   _pendingAttach = null;
+  _mdCard = null;
   try {
     const messages = await API.inbox.messages(cid);
     const conv = (screenState.inbox?.conversations || []).find(c => c.id === cid);
@@ -3405,6 +3453,7 @@ async function openConv(cid) {
       folder_ids: conv?.folder_ids || [],
     });
     _convHash = _hashConv(messages);
+    loadMondayCard(conv?.lead_username, conv?.lead_name);
     startPoll(() => pollConv(cid), 12000);   // заодно снимает поллинг инбокса — таймер один
     requestAnimationFrame(() => {
       const ml = document.getElementById('msg-list');
@@ -4165,6 +4214,37 @@ async function handleAction(action, el, e) {
       break;
     }
     case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
+
+    // Monday: карточка лида над перепиской
+    case 'md-open': {
+      const id = el.dataset.item || _mdCard?.item_id;
+      if (!id) return;
+      // openLink умеет только t.me — борд открываем внешней ссылкой
+      const url = (_mdCard && String(_mdCard.item_id) === String(id) && _mdCard.url)
+        ? _mdCard.url : `${MONDAY_BOARD}/pulses/${id}`;
+      if (tg?.openLink) tg.openLink(url); else window.open(url, '_blank');
+      break;
+    }
+    case 'md-next': {
+      if (!_mdCard?.item_id) return;
+      const d = new Date();
+      d.setDate(d.getDate() + parseInt(el.dataset.days || '0', 10));
+      const iso = d.toISOString().slice(0, 10);
+      try {
+        await API.monday.setNext(_mdCard.item_id, iso);
+        _mdCard.next_touch = iso; _mdRender(_mdCard);
+        toast(`Next Touch: ${iso}`);
+      } catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+    case 'md-note': {
+      if (!_mdCard?.item_id) return;
+      const body = await prompt_('Комментарий в карточку Monday:', '', { multiline: true });
+      if (!body || !body.trim()) return;
+      try { await API.monday.note(_mdCard.item_id, body.trim()); toast('Записал в карточку'); }
+      catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
     // Исправить уже отправленное — правка уходит и в Telegram (окно 48 часов), и в базу
     case 'msg-edit': {
       const mid = parseInt(el.dataset.id, 10);
@@ -4884,6 +4964,19 @@ document.addEventListener('keydown', (e) => {
 // Поля черновиков Guru: растут под текст, правки сохраняются при уходе из поля
 document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.guru-draft')) _autoGrow(e.target); });
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.guru-draft')) guruAutosave(e.target); });
+// Стадия сделки в Monday — прямо из полоски над перепиской
+document.addEventListener('change', async (e) => {
+  if (!e.target.matches?.('#md-stage') || !_mdCard?.item_id) return;
+  const stage = e.target.value;
+  try {
+    await API.monday.setStage(_mdCard.item_id, stage);
+    _mdCard.stage = stage;
+    toast(`Стадия: ${stage}`);
+  } catch (err) {
+    toast(`Ошибка: ${err.message}`);
+    _mdRender(_mdCard);            // вернуть селект к тому, что реально на борде
+  }
+});
 // Ширина изменилась (поворот телефона, всплывшая клавиатура, окно на десктопе): высота полей
 // посчитана под прежнюю ширину, и перетёкший на новые строки текст прячется под кнопками.
 let _growTimer = null;

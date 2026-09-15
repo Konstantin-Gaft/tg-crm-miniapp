@@ -181,6 +181,15 @@ const API = {
     importFromTgFolders: (data) => API.req('POST', '/api/sales_clone/import_from_tg_folders', data),
   },
 
+  // Карточка лида на борде Monday: полоска над перепиской и в черновике Guru
+  monday: {
+    card:     (p)          => API.req('GET',  `/api/monday/card?${new URLSearchParams(p)}`),
+    stages:   ()           => API.req('GET',  '/api/monday/stages'),
+    setStage: (id, stage)  => API.req('POST', `/api/monday/card/${id}/stage`, { stage }),
+    setNext:  (id, date)   => API.req('POST', `/api/monday/card/${id}/next_touch`, { date }),
+    note:     (id, body)   => API.req('POST', `/api/monday/card/${id}/note`, { body }),
+  },
+
   guru: {
     chat:      (text)              => API.req('POST', '/api/guru/chat', { text }),
     history:   (limit=50)          => API.req('GET',  `/api/guru/history?limit=${limit}`),
