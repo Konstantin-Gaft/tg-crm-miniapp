@@ -59,6 +59,8 @@ const API = {
     unsnooze:  (cid)          => API.req('POST',   `/api/inbox/conversations/${cid}/unsnooze`),
     reclassify:(cid)          => API.req('POST',   `/api/inbox/conversations/${cid}/reclassify`),
     bulkReply: (ids, text)    => API.req('POST',   '/api/inbox/conversations/bulk_reply', { conv_ids: ids, text }),
+    // волна догона: не шлём сразу, а кладём черновики в ленту Guru
+    wave:      (ids, text)    => API.req('POST',   '/api/inbox/conversations/wave', { conv_ids: ids, text }),
     setBotMode:(cid, mode)    => API.req('POST',   `/api/inbox/conversations/${cid}/bot_mode`, { mode }),
     listAll:   ()             => API.req('GET',    '/api/inbox/conversations?include_snoozed=true'),
     // Папки инбокса: диалог может лежать в нескольких сразу
@@ -108,6 +110,8 @@ const API = {
   tools: {
     parse:     (data)         => API.req('POST',   '/api/tools/parse', data),
     search:    (data)         => API.req('POST',   '/api/tools/search', data),
+    // телефоны из Apollo/Clay → аккаунты Telegram → список лидов
+    phones:    (phones, list_name) => API.req('POST', '/api/tools/phones', { phones, list_name }),
   },
 
   health: () => API.req('GET', '/api/health'),

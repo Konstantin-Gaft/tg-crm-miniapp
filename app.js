@@ -744,6 +744,11 @@ const screens = {
         <div class="list-text"><div class="list-title">Поиск чатов</div><div class="list-sub">По ключевым словам в сообщениях</div></div>
         <div class="list-arrow">›</div>
       </div>
+      <div class="list-item" data-action="phones-lookup">
+        <div class="list-ico" data-pix="phone"></div>
+        <div class="list-text"><div class="list-title">Телефоны → Telegram</div><div class="list-sub">Номера из Apollo и Clay превращаем в @username</div></div>
+        <div class="list-arrow">›</div>
+      </div>
       <div class="section-title">CRM</div>
       <div class="list-item" data-action="goto-kb">
         <div class="list-ico" data-pix="brain"></div>
@@ -1597,6 +1602,7 @@ const screens = {
         ${selectMode && selected.size > 0 ? `
           <div class="ib-bulk-bar" style="position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));z-index:30;padding:10px 16px;background:var(--card);border-top:3px solid var(--ink);max-width:540px;margin:0 auto;display:flex;gap:8px">
             <button class="btn primary" style="flex:1" data-action="ib-bulk-reply">↩ Ответить ${selected.size}</button>
+            <button class="btn" style="flex:1" data-action="ib-bulk-wave" title="Волна догона: сделать черновики в Guru, отправишь после апрува">✍️ Догнать</button>
             <button class="btn" style="flex:1" data-action="ib-bulk-folder" title="Разложить выбранное по папкам">📁 В папку</button>
             <button class="btn" style="flex:0 0 auto" data-action="ib-bulk-delete">🗑 ${selected.size}</button>
           </div>
@@ -2347,6 +2353,7 @@ const screens = {
           <span>⏳ Лист ожидания · ${q.total}</span>
           <span class="guru-queue-head-r">
             ${qDead ? '<span class="guru-queue-state dead" title="Воркер очереди на сервере не запущен: ничего не уйдёт">⚠ воркер не запущен</span>' : ''}
+            ${(q.paused_accounts || []).length ? '<span class="guru-queue-state dead" title="На аккаунт пожаловались: @SpamBot сообщил об ограничении, ждём">⏸ пауза аккаунта</span>' : ''}
             <span class="guru-queue-state ${qRunning ? 'on' : 'off'}">${qRunning ? (qDead ? '▶ включена' : '▶ идёт') : '⏸ пауза'}</span>
             <span class="guru-queue-chev">${queueOpen ? '▾' : '▸'}</span>
           </span>
@@ -2355,6 +2362,7 @@ const screens = {
           <button class="btn guru-queue-run ${qRunning ? 'stop' : 'start'}" data-action="guru-queue-run" data-run="${qRunning ? '0' : '1'}"
             title="${qRunning ? 'Остановить рассылку: очередь сохранится, новые сообщения не уйдут' : 'Запустить рассылку: очередь пойдёт по лимиту, окну и паузе аккаунта'}">${qRunning ? '⏸ Пауза рассылки' : '▶ Запустить рассылку'}</button>
           ${qDead ? '<div class="guru-queue-deadnote">⚠ Воркер рассылки на сервере сейчас не работает, сообщения не уйдут. Запуск сохранится и сработает, как только воркер поднимется.</div>' : ''}
+          ${(q.paused_accounts || []).map(p => `<div class="guru-queue-deadnote">⏸ ${escape(p.phone)} на паузе после жалобы до ${escape(fmtTime(p.until))} — с этого аккаунта сейчас ничего не уходит</div>`).join('')}
           ${(q.accounts||[]).map(accLine).join('')}
           ${q.total ? (q.items||[]).map(rowLine).join('') : '<div class="muted small" style="padding:6px 2px">очередь пуста, апрувни черновик и он встанет сюда</div>'}
           ${sentHTML}
@@ -4219,6 +4227,24 @@ async function handleAction(action, el, e) {
     }
     case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
 
+    // Телефоны из Apollo/Clay → аккаунты Telegram → новый список лидов
+    case 'phones-lookup': {
+      const raw = await prompt_('Телефоны — по одному в строке:', '', { multiline: true });
+      if (!raw || !raw.trim()) return;
+      const phones = raw.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean);
+      if (!phones.length) return;
+      const name = (await prompt_('Название списка:', `Телефоны ${new Date().toISOString().slice(0, 10)}`) || '').trim();
+      if (!name) return;
+      toast(`Проверяю ${phones.length} номеров, это небыстро…`);
+      try {
+        const r = await API.tools.phones(phones, name);
+        toast(`✅ В Telegram нашлось ${r.found} из ${phones.length}` +
+              (r.daily_limit_hit ? ' · дневной лимит проверок исчерпан' : '') +
+              ' · список в «Списки лидов»');
+      } catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+
     // Monday: карточка лида над перепиской
     case 'md-open': {
       const id = el.dataset.item || _mdCard?.item_id;
@@ -4801,6 +4827,20 @@ async function handleAction(action, el, e) {
       try {
         const r = await API.inbox.bulkReply(ids, text);
         toast(`✅ Отправлено: ${r.sent}, ошибок: ${r.failed}`);
+        screenState.inbox = { ...screenState.inbox, select_mode: false, selected: [] };
+        loadInbox();
+      } catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+    // Волна догона: ничего не улетает сразу — собираем черновики в ленту Guru
+    case 'ib-bulk-wave': {
+      const ids = screenState.inbox?.selected || [];
+      if (!ids.length) return;
+      const text = await prompt_(`Догон для ${ids.length} переписок — уйдёт в черновики Guru:`, '', { multiline: true });
+      if (!text || !text.trim()) return;
+      try {
+        const r = await API.inbox.wave(ids, text.trim());
+        toast(`✍️ Черновиков: ${r.created}${r.skipped ? `, пропущено: ${r.skipped}` : ''} — проверь в Guru`);
         screenState.inbox = { ...screenState.inbox, select_mode: false, selected: [] };
         loadInbox();
       } catch (e) { toast(`Ошибка: ${e.message}`); }
