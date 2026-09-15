@@ -841,6 +841,8 @@ textarea.prompt-input { resize: vertical; min-height: 120px; line-height: 1.45; 
   font-family: var(--font-ui); font-size: 12px;
 }
 .md-card.empty { opacity: .7; }
+/* кнопок в полоске пять — держим их мелкими, чтобы на телефоне была одна строка */
+.md-card .btn.sm { padding: 2px 6px; font-size: 11px; box-shadow: none; }
 .md-stage {
   font-family: var(--font-ui); font-size: 12px; font-weight: 600;
   padding: 3px 6px; border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
