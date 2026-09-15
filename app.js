@@ -2165,6 +2165,7 @@ const screens = {
         ${a.status === 'pending' ? `
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
+            ${isReply ? '' : `<button class="btn sm ghost" data-action="guru-skip" data-id="${a.id}" title="Уже писал ему с другого аккаунта: убрать из списка и больше не предлагать">уже писал</button>`}
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик, не отправлять">Отклонить</button>
             <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter">✓ В очередь</button>
           </div>` : ''}
@@ -3060,6 +3061,15 @@ const cleanErr = (e) => (e?.message || '').replace(/^\d+\s+/, '') || 'ошибк
 async function guruReject(id) {
   try { await API.guru.reject(id); loadGuru(true); }
   catch (e) { toast(`Ошибка: ${e.message}`); }
+}
+/** «Уже писал ему с другого аккаунта»: карточка закрывается, лид помечается do_not_contact,
+ *  чтобы радар и дедуп больше не приносили его в списки. */
+async function guruSkip(id) {
+  try {
+    const r = await API.guru.alreadyContacted(id);
+    toast(`✓ убрал из списка${r?.leads_flagged ? ', писать больше не будем' : ''}`);
+    loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
 }
 async function guruUnqueue(id) {
   try { await API.guru.unqueue(id); toast('↩ Вернул в черновики'); loadGuru(true); }
@@ -4355,6 +4365,7 @@ async function handleAction(action, el, e) {
     case 'guru-approve': guruApprove(parseInt(el.dataset.id, 10)); break;
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
+    case 'guru-skip':    guruSkip(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
     case 'guru-open-tg': openTgUser(el.dataset.uname || ''); break;
