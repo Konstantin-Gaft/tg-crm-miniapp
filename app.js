@@ -844,8 +844,8 @@ const screens = {
 
         <div class="section-title">Настройки</div>
         <div class="card">
-          <label style="font-size:12px;color:var(--text-muted)">Дневной лимит сообщений</label>
-          <input id="ad-limit" type="number" min="1" max="200" value="${a.daily_limit}"
+          <label style="font-size:12px;color:var(--text-muted)">Дневной лимит сообщений <span title="0 = аккаунт включён и греется, но холодных касаний не шлёт. Ответы лидам в живых диалогах уходят и при нуле">(0 = только прогрев)</span></label>
+          <input id="ad-limit" type="number" min="0" max="200" value="${a.daily_limit}"
                  style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
           <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:flex;justify-content:space-between;align-items:center">
             <span>Прокси (SOCKS5)</span>
@@ -2224,9 +2224,9 @@ const screens = {
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
             <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="${a.asset_id ? 'Убрать файл' : 'Приложить фото или видео, уйдёт одним сообщением с текстом'}">${a.asset_id ? '📎 убрать' : '📎'}</button>
-            ${isReply ? '' : `<button class="btn sm ghost" data-action="guru-skip" data-id="${a.id}" title="Уже писал ему с другого аккаунта: убрать из списка и больше не предлагать">уже писал</button>`}
+            ${isReply ? '' : `<button class="btn sm ghost" data-action="guru-skip" data-id="${a.id}" title="Убрать лида совсем: больше не предлагать, карточка уйдёт из вкладки Guru на борде. Причина не важна: уже писал, плохой лид">Удалить</button>`}
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Отклонить черновик, не отправлять">Отклонить</button>
-            <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter">✓ В очередь</button>
+            <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}" title="${isReply ? 'Ответить сразу: мимо очереди, лимит аутрича не тратится. В поле: Ctrl/⌘+Enter' : 'В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter'}">${isReply ? '✓ Ответить' : '✓ В очередь'}</button>
           </div>` : ''}
         ${a.status === 'queued' ? `
           <div class="guru-actions">
@@ -3143,7 +3143,7 @@ async function guruReject(id) {
 async function guruSkip(id) {
   try {
     const r = await API.guru.alreadyContacted(id);
-    toast(`✓ убрал из списка${r?.leads_flagged ? ', писать больше не будем' : ''}`);
+    toast('✓ удалил: писать не будем, карточка уйдёт из вкладки Guru');
     loadGuru(true);
   } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
 }
