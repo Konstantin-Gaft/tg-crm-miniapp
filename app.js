@@ -345,7 +345,7 @@ function startPoll(fn, ms) { stopPoll(); _poll = setInterval(fn, ms); }
 
 // ===== Schedule editor =====
 const DAY_LABELS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
-const DEFAULT_SCHEDULE = { enabled: false, days: [true,true,true,true,true,false,false], time_from: '09:00', time_to: '18:00', timezone: 'UTC' };
+const DEFAULT_SCHEDULE = { enabled: false, days: [true,true,true,true,true,false,false], time_from: '09:00', time_to: '18:00', timezone: 'UTC', touch_delays: [1,3,5,7] };
 const TIMEZONES = ['UTC','Europe/Moscow','Europe/Kyiv','Europe/London','Europe/Berlin','Europe/Lisbon','Asia/Dubai','Asia/Bangkok','Asia/Tokyo','America/New_York','America/Los_Angeles'];
 function scheduleEditorHTML(sch) {
   const s = sch || DEFAULT_SCHEDULE;
@@ -354,6 +354,7 @@ function scheduleEditorHTML(sch) {
   const tt = s.time_to   || '18:00';
   const tz = s.timezone  || 'UTC';
   const enabled = !!s.enabled;
+  const td = (s.touch_delays && s.touch_delays.length === 4) ? s.touch_delays : DEFAULT_SCHEDULE.touch_delays;
   return `
     <div class="card">
       <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
@@ -379,6 +380,17 @@ function scheduleEditorHTML(sch) {
         </select>
       </div>
     </div>
+    <div class="card" style="margin-top:12px">
+      <div style="font-weight:500">Интервалы цепочки касаний</div>
+      <div style="font-size:12px;color:var(--text-muted)">Через сколько дней после предыдущего уходит следующее сообщение тому же лиду. Ответил — остаток цепочки снимается.</div>
+      ${[2,3,4,5].map((n, i) => `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+          <span style="flex:1;font-size:13px">${n}-е сообщение</span>
+          <input type="number" min="0" max="60" data-sch-touch="${i}" value="${td[i]}" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
+          <span style="font-size:12px;color:var(--text-muted)">дн</span>
+        </div>
+      `).join('')}
+    </div>
   `;
 }
 function collectSchedule() {
@@ -396,7 +408,12 @@ function collectSchedule() {
   // Если у первого дня изменили время — применяем ко всем (UI как у конкурента — единое окно, чекбоксы дней)
   // Но если бы были разные tf/tt по дням — мы это поддерживаем (берём с первого включённого)
   const tz = document.getElementById('sch-tz')?.value || 'UTC';
-  return { enabled: !!enabled, days, time_from: tf, time_to: tt, timezone: tz };
+  const touch_delays = [];
+  for (let i = 0; i < 4; i++) {
+    const v = parseInt(document.querySelector(`[data-sch-touch="${i}"]`)?.value, 10);
+    touch_delays.push(Number.isFinite(v) && v >= 0 ? v : DEFAULT_SCHEDULE.touch_delays[i]);
+  }
+  return { enabled: !!enabled, days, time_from: tf, time_to: tt, timezone: tz, touch_delays };
 }
 
 // При клике на чекбокс «Включить расписание» — гасим/подсвечиваем форму
@@ -2340,7 +2357,7 @@ const screens = {
       return `<div class="guru-queue-item ${open ? 'open' : ''}" data-act-id="${it.id}">
         <div class="guru-queue-row">
           <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
-          <button class="guru-queue-who" data-action="guru-queue-expand" data-id="${it.id}" title="${open ? 'Скрыть текст' : 'Показать и поправить текст'}"><span class="guru-queue-chev">${open ? '▾' : '▸'}</span> ${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}</button>
+          <button class="guru-queue-who" data-action="guru-queue-expand" data-id="${it.id}" title="${open ? 'Скрыть текст' : 'Показать и поправить текст'}"><span class="guru-queue-chev">${open ? '▾' : '▸'}</span> ${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}${(it.touch_idx || 1) > 1 ? ` <span class="muted small">касание ${it.touch_idx}</span>` : ''}</button>
           <span class="guru-queue-eta">${escape(rowEta(it))}</span>
           <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
           <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
