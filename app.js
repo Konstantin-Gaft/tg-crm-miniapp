@@ -556,6 +556,61 @@ function premiumInfo(a) {
            color: '#16a34a', bg: 'rgba(22,163,74,.14)' };
 }
 
+// Шкала прогрева 0–100 (как warmup score в Instantly). Считает backend/services/account_health.py:
+// растёт от возраста, дней и активности прогрева, Premium, прокси; падает от жалоб @SpamBot,
+// PEER_FLOOD, FloodWait, потерь сессии. 100% и active = «Готов» — можно в работу.
+function healthColors(h) {
+  if (!h) return null;
+  return {
+    ready:   { color: '#15803d', bg: 'rgba(21,128,61,.16)', bar: '#16a34a' },
+    good:    { color: '#16a34a', bg: 'rgba(22,163,74,.14)', bar: '#22c55e' },
+    warming: { color: '#b45309', bg: 'rgba(180,83,9,.14)',  bar: '#f59e0b' },
+    risk:    { color: '#b91c1c', bg: 'rgba(185,28,28,.14)', bar: '#ef4444' },
+  }[h.level] || { color: '#6b7280', bg: 'rgba(107,114,128,.14)', bar: '#9ca3af' };
+}
+
+function healthChip(a) {
+  const h = a && a.health;
+  if (!h) return '';
+  const c = healthColors(h);
+  const tip = h.minus && h.minus.length ? 'Минусы: ' + h.minus.map(m => `${m.name} ${m.points}`).join(', ')
+                                        : 'Шкала прогрева и здоровья аккаунта';
+  return `<span title="${escape(tip)}" style="display:inline-flex;align-items:center;gap:6px;
+    font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;color:${c.color};background:${c.bg}">
+    ${h.ready ? '✓ ' : '🔥 '}${escape(h.label)}
+    <span style="display:inline-block;width:42px;height:5px;border-radius:3px;background:rgba(0,0,0,.08);overflow:hidden">
+      <span style="display:block;height:100%;width:${h.score}%;background:${c.bar}"></span></span>
+  </span> `;
+}
+
+function healthCardHTML(a) {
+  const h = a && a.health;
+  if (!h) return '';
+  const c = healthColors(h);
+  const row = (name, pts, note, mx) => `
+    <div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border)">
+      <span>${escape(name)}${note ? ` <span style="color:var(--text-muted)">· ${escape(note)}</span>` : ''}</span>
+      <b style="white-space:nowrap;color:${pts < 0 ? '#b91c1c' : (mx != null && pts >= mx ? '#16a34a' : 'var(--text)')}">${pts > 0 ? '+' : ''}${pts}${mx != null ? ` / ${mx}` : ''}</b>
+    </div>`;
+  return `
+    <div class="section-title">🔥 Прогрев и здоровье</div>
+    <div class="card" style="border-left:3px solid ${c.bar}">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <div style="font-size:28px;font-weight:800;color:${c.color}">${h.score}%</div>
+        <div style="font-size:12px;font-weight:700;color:${c.color}">${h.ready ? '✓ Готов к работе' : escape(h.label)}</div>
+      </div>
+      <div style="height:8px;border-radius:4px;background:rgba(0,0,0,.08);overflow:hidden;margin:6px 0 10px">
+        <div style="height:100%;width:${h.score}%;background:${c.bar}"></div>
+      </div>
+      ${(h.plus || []).map(p => row(p.name, p.points, p.note, p.max)).join('')}
+      ${(h.minus || []).map(m => row(m.name, m.points, m.note, null)).join('')}
+      <div style="font-size:11px;color:var(--text-muted);margin-top:8px;line-height:1.5">
+        100% — прогрет, прогрев идёт на автомате, за 14 дней ни жалоб, ни блоков. Жалобы @SpamBot,
+        PEER_FLOOD, FloodWait и потери сессии снижают шкалу.
+      </div>
+    </div>`;
+}
+
 // Прокси: дату оплаты вбивают руками в карточке. Напоминание в бот — за 2 дня (premium.py).
 function proxyInfo(a) {
   const days = (a && a.proxy_days_left != null) ? a.proxy_days_left : null;
@@ -836,7 +891,7 @@ const screens = {
                 <div class="lead-body">
                   <div class="lead-name">${escape(a.first_name || a.phone)}${a.username ? ` <span style="color:var(--text-muted);font-weight:400">@${escape(a.username)}</span>` : ''}</div>
                   <div class="lead-status">${escape(a.phone)}${a.proxy ? ' · proxy ✓' : ''}</div>
-                  <div style="margin-top:5px">${premiumChip(a)}${proxyChip(a)}</div>
+                  <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">${healthChip(a)}${premiumChip(a)}${proxyChip(a)}</div>
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
@@ -904,6 +959,8 @@ const screens = {
                  style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
           <div style="font-size:11px;color:var(--text-muted);margin-top:4px">За 2 дня до конца бот пришлёт напоминание в личку</div>
         </div>
+
+        ${healthCardHTML(a)}
 
         <div class="section-title">⭐ Telegram Premium</div>
         ${(() => { const p = premiumInfo(a); return `
