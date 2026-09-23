@@ -688,21 +688,96 @@ const _hasIncoming = (c) =>
 const _readSilent = (c) =>
   !_hasIncoming(c) && (c.out_unread || 0) === 0 && c.last_direction === 'out';
 
+// ===== Inbox: фильтры как в Monday — «Этап» и «Next Touch» (Костя 23.09) =====
+// Стадия и дата — зеркало карточки борда (board_stage/board_next), правки из чата уходят в
+// Monday и сюда сразу. Лид не на борде — статус из списка, если есть.
+const IB_NO_STAGE = '__none';
+const IB_DATE_BUCKETS = [
+  ['past', 'Прошедшие'], ['today', 'Сегодня'], ['tomorrow', 'Завтра'],
+  ['this_week', 'Эта неделя'], ['next_week', 'Следующая неделя'],
+  ['future', 'Будущие'], ['none', 'Без даты'],
+];
+let _mdStageColors = {};     // стадия → цвет лейбла на борде
+
+const _ibStage = (c) => c.board_stage || c.lead_status || null;
+const _isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function _ibDays(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + offset); return _isoLocal(d); }
+function _ibWeekRange(weeks) {       // пн–вс текущей (0) / следующей (1) недели
+  const d = new Date(); d.setHours(12, 0, 0, 0);
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow + 7 * weeks);
+  const from = _isoLocal(d); d.setDate(d.getDate() + 6);
+  return [from, _isoLocal(d)];
+}
+function _ibDateBuckets(next) {
+  if (!next) return ['none'];
+  const today = _ibDays(0), out = [];
+  if (next < today) out.push('past');
+  if (next === today) out.push('today');
+  if (next === _ibDays(1)) out.push('tomorrow');
+  if (next > today) out.push('future');
+  const [w0, w1] = _ibWeekRange(0), [n0, n1] = _ibWeekRange(1);
+  if (next >= w0 && next <= w1) out.push('this_week');
+  if (next >= n0 && next <= n1) out.push('next_week');
+  return out;
+}
+// Подпись даты в строке: «сегодня», «завтра», «просрочено 3 дн», «25.09»
+function _ibNextLabel(next) {
+  if (!next) return null;
+  const today = _ibDays(0);
+  if (next === today) return { text: 'сегодня', cls: 'today' };
+  if (next === _ibDays(1)) return { text: 'завтра', cls: '' };
+  const [y, m, d] = next.split('-');
+  if (next < today) {
+    const days = Math.round((new Date(today) - new Date(next)) / 864e5);
+    return { text: `просрочено ${days} дн`, cls: 'past' };
+  }
+  return { text: `${d}.${m}${y !== today.slice(0, 4) ? '.' + y.slice(2) : ''}`, cls: '' };
+}
+function _ibStagePill(stage) {
+  if (!stage) return '';
+  const col = _mdStageColors[stage] || _mdStageColors[Object.keys(_mdStageColors).find(k => k.toLowerCase() === stage.toLowerCase())];
+  return col
+    ? `<span class="pill md-stage-pill" style="background:${escape(col)};border-color:${escape(col)}">${escape(stage)}</span>`
+    : `<span class="pill cold">${escape(stage)}</span>`;
+}
+const IB_FILTERS_KEY = 'ib_filters_v1';
+function _ibLoadFilters() {
+  try { const v = JSON.parse(localStorage.getItem(IB_FILTERS_KEY) || '{}'); return {
+    stages: Array.isArray(v.stages) ? v.stages : [], dates: Array.isArray(v.dates) ? v.dates : [],
+    sort: v.sort === 'next' ? 'next' : 'recent' }; }
+  catch { return { stages: [], dates: [], sort: 'recent' }; }
+}
+function _ibSaveFilters(st) {
+  try { localStorage.setItem(IB_FILTERS_KEY, JSON.stringify({ stages: st.stages || [], dates: st.dates || [], sort: st.sort || 'recent' })); } catch {}
+}
+
 // Фильтр + поиск одним местом: используется и шаблоном, и «выбрать всё» в bulk-режиме
 function _inboxVisible(convs, st) {
   const filter = st?.filter || 'all';
   const q = (st?.q || '').toLowerCase().trim();
+  const stages = new Set(st?.stages || []);
+  const dates = st?.dates || [];
   let out = (convs || []).filter(c => {
-    if (filter === 'all')        return true;
-    if (filter === 'unread')     return !!c.unread;
-    if (filter === 'no_reply')   return !_hasIncoming(c);
-    if (filter === 'read_quiet') return _readSilent(c);
-    return (c.lead_status || 'Без статуса') === filter;
+    if (filter === 'unread'     && !c.unread) return false;
+    if (filter === 'no_reply'   && _hasIncoming(c)) return false;
+    if (filter === 'read_quiet' && !_readSilent(c)) return false;
+    if (stages.size && !stages.has(_ibStage(c) || IB_NO_STAGE)) return false;
+    if (dates.length) {
+      const b = _ibDateBuckets(c.board_next);
+      if (!dates.some(d => b.includes(d))) return false;
+    }
+    return true;
   });
   if (q) out = out.filter(c =>
     (c.lead_name || '').toLowerCase().includes(q)
     || (c.lead_username || '').toLowerCase().includes(q)
     || (c.last_text || '').toLowerCase().includes(q));
+  // Сортировка по дате контакта: ближайшая (и просроченная) сверху, без даты — в конце
+  if (st?.sort === 'next') out = out.slice().sort((a, b) => {
+    const x = a.board_next || '9999', y = b.board_next || '9999';
+    return x < y ? -1 : x > y ? 1 : (new Date(b.last_message_at) - new Date(a.last_message_at));
+  });
   return out;
 }
 
@@ -1636,18 +1711,28 @@ const screens = {
         <div>${folderId ? 'Закинь переписки сюда через «Выбрать → 📁 В папку».' : 'Запусти кампанию — переписки со всех твоих аккаунтов будут падать сюда.'}</div>
       </div></div>`;
 
-    // Считаем по статусам + по состоянию ответа
+    // Считаем по состоянию ответа
     const counts = { unread: 0, no_reply: 0, read_quiet: 0 };
     convs.forEach(c => {
       if (c.unread) counts.unread++;
       if (!_hasIncoming(c)) counts.no_reply++;
       if (_readSilent(c)) counts.read_quiet++;
-      const s = c.lead_status || 'Без статуса';
-      counts[s] = (counts[s] || 0) + 1;
     });
-
-    const statusOrder = ['Trial Activated','Testnet','Objection handling','Initial Contact','Winback','New','Без статуса'];
-    const presentStatuses = statusOrder.filter(s => counts[s]);
+    const selStages = st?.stages || [], selDates = st?.dates || [];
+    const sortNext = st?.sort === 'next';
+    const anyMd = selStages.length || selDates.length || sortNext;
+    const dateName = Object.fromEntries(IB_DATE_BUCKETS);
+    const mdBar = `
+        <div class="ib-md-bar">
+          <button class="ib-md-btn ${selStages.length ? 'on' : ''}" data-action="ib-md-filter" data-kind="stage">Этап${selStages.length ? ` · ${selStages.length}` : ''} ▾</button>
+          <button class="ib-md-btn ${selDates.length ? 'on' : ''}" data-action="ib-md-filter" data-kind="date">Next Touch${selDates.length ? ` · ${selDates.length}` : ''} ▾</button>
+          <button class="ib-md-btn ${sortNext ? 'on' : ''}" data-action="ib-md-sort" title="Сортировать по дате контакта">↕ ${sortNext ? 'по дате контакта' : 'по последнему'}</button>
+          ${anyMd ? '<button class="ib-md-btn ghost" data-action="ib-md-clear">✕ сброс</button>' : ''}
+        </div>
+        ${selStages.length || selDates.length ? `<div class="ib-md-chosen">
+          ${selStages.map(x => `<span class="ib-md-tag" data-action="ib-md-drop" data-kind="stage" data-val="${escape(x)}">${x === IB_NO_STAGE ? 'Без этапа' : escape(x)} ✕</span>`).join('')}
+          ${selDates.map(x => `<span class="ib-md-tag" data-action="ib-md-drop" data-kind="date" data-val="${escape(x)}">${escape(dateName[x] || x)} ✕</span>`).join('')}
+        </div>` : ''}`;
 
     const q = (st?.q || '').toLowerCase().trim();
     const display = _inboxVisible(convs, st);
@@ -1676,18 +1761,17 @@ const screens = {
           ${counts.unread ? `<div class="stage-chip ${filter==='unread'?'active':''}" data-inbox-filter="unread">● Непрочитанные · ${counts.unread}</div>` : ''}
           ${counts.no_reply ? `<div class="stage-chip ${filter==='no_reply'?'active':''}" data-inbox-filter="no_reply" title="Мы написали, ответа не было">Без ответа · ${counts.no_reply}</div>` : ''}
           ${counts.read_quiet ? `<div class="stage-chip ${filter==='read_quiet'?'active':''}" data-inbox-filter="read_quiet" title="Наше последнее сообщение открыли, но не ответили">Прочитано, молчит · ${counts.read_quiet}</div>` : ''}
-          ${presentStatuses.map(s => `
-            <div class="stage-chip ${filter===s?'active':''}" data-inbox-filter="${escape(s)}">${escape(s)} · ${counts[s]}</div>
-          `).join('')}
         </div>
+        ${mdBar}
         `}
         ${display.length === 0 ? '<div class="empty"><div class="empty-ico" data-pix="search"></div><div class="empty-title">Ничего не найдено</div></div>' :
           display.map(c => {
             const checked = selected.has(c.id);
             const tagsHtml = (c.tags || []).slice(0, 3).map(t => `<span class="pill" style="font-size:9px;padding:2px 6px">${escape(t)}</span>`).join(' ');
             const snoozed = c.snoozed_until && new Date(c.snoozed_until) > new Date();
-            const statusPill = c.lead_status === 'Trial Activated' ? 'pill warm' :
-                               c.lead_status === 'Paid' || c.lead_status === 'Active Partner' ? 'pill win' : 'pill cold';
+            const stg = _ibStage(c);
+            const nl = _ibNextLabel(c.board_next);
+            const nextHtml = nl ? `<span class="ib-next ${nl.cls}" title="Next Touch ${escape(c.board_next)}">📅 ${escape(nl.text)}</span>` : '';
             return `
             <div class="conv-row" data-action="${selectMode?'ib-toggle':'open-conv'}" data-id="${c.id}" data-conv-row="${c.id}" style="${checked?'background:var(--gold);':''}${snoozed?'opacity:.55;':''}">
               ${selectMode ? `<div style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex:0 0 36px"><input type="checkbox" ${checked?'checked':''} style="width:20px;height:20px;pointer-events:none"></div>` : avatar(c.lead_tg_id, c.lead_name || c.lead_username, c.unread)}
@@ -1697,7 +1781,7 @@ const screens = {
                   <div class="conv-time">${prettyTime(c.last_message_at)}</div>
                 </div>
                 <div class="conv-text" title="${escape(c.last_text||'')}">${_rowTicks(c)}${c.last_direction === 'out' ? 'Ты: ' : ''}${escape((c.last_text || '—').slice(0, 70))}</div>
-                ${tagsHtml || c.lead_status ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">${c.lead_status?`<span class="${statusPill}">${escape(c.lead_status)}</span>`:''}${tagsHtml}</div>` : ''}
+                ${tagsHtml || stg || nextHtml ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">${_ibStagePill(stg)}${nextHtml}${tagsHtml}</div>` : ''}
               </div>
             </div>
           `;}).join('')
@@ -3435,7 +3519,8 @@ async function guruAutosave(ta) {
 let _inboxHash = '';
 function _hashInbox(convs, folders) {
   const conv = convs.map(c => `${c.id}:${c.unread?1:0}:${c.last_message_at}:${(c.last_text||'').length}`
-    + `:${c.last_direction||''}:${c.last_out_delivered?1:0}:${c.last_out_read_at||''}:${(c.folder_ids||[]).join('.')}`).join(',');
+    + `:${c.last_direction||''}:${c.last_out_delivered?1:0}:${c.last_out_read_at||''}:${(c.folder_ids||[]).join('.')}`
+    + `:${c.board_stage||''}:${c.board_next||''}:${c.lead_status||''}`).join(',');
   const fld = (folders || []).map(f => `${f.id}:${f.name}:${f.unread||0}:${f.total||0}`).join(',');
   return `${conv}|${fld}`;
 }
@@ -3482,7 +3567,10 @@ async function loadInbox(silent=false) {
     _inboxHash = newHash;
     const filter = screenState.inbox?.filter || 'all';
     if (silent && currentScreen !== 'inbox') return;   // пока летел ответ, юзер ушёл
-    render('inbox', { conversations, filter, folders, folder_id: folderId });
+    const f = screenState.inbox?.stages ? screenState.inbox : _ibLoadFilters();
+    render('inbox', { conversations, filter, folders, folder_id: folderId,
+                      q: screenState.inbox?.q || '', stages: f.stages, dates: f.dates, sort: f.sort });
+    _ibEnsureStages();
   } catch (e) {
     if (!silent) {
       render('inbox', { conversations: [], folder_id: folderId });
@@ -3553,22 +3641,111 @@ function _mdRender(c) {
     <button class="btn sm ghost" data-action="md-next" data-days="0" title="Next Touch — сегодня">сегодня</button>
     <button class="btn sm ghost" data-action="md-next" data-days="3" title="Next Touch — через 3 дня">+3д</button>
     <button class="btn sm ghost" data-action="md-next" data-days="7" title="Next Touch — через неделю">+7д</button>
+    <input type="date" id="md-date" class="md-date" value="${escape(c.next_touch || '')}" title="Next Touch — любая дата">
     <button class="btn sm ghost" data-action="md-note" title="Комментарий в карточку">заметка</button>
     <button class="btn sm ghost" data-action="md-open" data-item="${escape(c.item_id)}" title="Открыть карточку на борде">↗</button>`;
 }
 
-async function loadMondayCard(username, company) {
+// Лист выбора «Этап» / «Next Touch»: мультивыбор как в Monday, список под ним фильтруется сразу
+function _ibApply(patch) {
+  const st = { ...screenState.inbox, ...patch };
+  _ibSaveFilters(st);
+  render('inbox', st);
+}
+function openIbFilterSheet(kind) {
+  document.getElementById('ib-md-sheet')?.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'ib-md-sheet';
+  const draw = () => {
+    const st = screenState.inbox || {};
+    const convs = st.conversations || [];
+    const key = kind === 'stage' ? 'stages' : 'dates';
+    const sel = new Set(st[key] || []);
+    let rows;
+    if (kind === 'stage') {
+      const cnt = {};
+      convs.forEach(c => { const k = _ibStage(c) || IB_NO_STAGE; cnt[k] = (cnt[k] || 0) + 1; });
+      // порядок и цвета борда; стадии, которых на борде нет (статус из списка), — в конце
+      const lower = new Set((_mdStages || []).map(x => x.toLowerCase()));
+      const extra = Object.keys(cnt).filter(k => k !== IB_NO_STAGE && !lower.has(k.toLowerCase()));
+      const list = [...(_mdStages || []), ...extra, IB_NO_STAGE];
+      rows = list.map(v => {
+        const n = cnt[v] || (v !== IB_NO_STAGE ? cnt[Object.keys(cnt).find(k => k.toLowerCase() === v.toLowerCase())] : 0) || 0;
+        const label = v === IB_NO_STAGE ? '<span class="pill cold">Без этапа / нет на борде</span>' : _ibStagePill(v);
+        return { v, n, label };
+      }).filter(r => r.n || sel.has(r.v));
+    } else {
+      const cnt = {};
+      convs.forEach(c => _ibDateBuckets(c.board_next).forEach(b => { cnt[b] = (cnt[b] || 0) + 1; }));
+      rows = IB_DATE_BUCKETS.map(([v, name]) => ({ v, n: cnt[v] || 0, label: `<span class="ib-date-name">${escape(name)}</span>` }));
+    }
+    wrap.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-sheet">
+          <div class="modal-title">${kind === 'stage' ? 'Этап' : 'Next Touch'} <span class="muted small">— можно несколько</span></div>
+          <div class="ib-md-list">
+            ${rows.length ? rows.map(r => `
+              <label class="ib-md-row">
+                <input type="checkbox" data-ibv="${escape(r.v)}" ${sel.has(r.v) ? 'checked' : ''}>
+                ${r.label}<span class="ib-md-n">${r.n}</span>
+              </label>`).join('') : '<div class="muted small">Нет диалогов со стадией</div>'}
+          </div>
+          <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn ghost" style="flex:1" data-ibs="clear">Очистить</button>
+            <button class="btn primary" style="flex:1" data-ibs="done">Готово</button>
+          </div>
+        </div>
+      </div>`;
+  };
+  draw();
+  document.body.appendChild(wrap);
+  wrap.addEventListener('change', (e) => {
+    const v = e.target.dataset?.ibv; if (v === undefined) return;
+    const key = kind === 'stage' ? 'stages' : 'dates';
+    const cur = new Set(screenState.inbox?.[key] || []);
+    e.target.checked ? cur.add(v) : cur.delete(v);
+    _ibApply({ [key]: Array.from(cur) });
+  });
+  wrap.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-ibs]');
+    if (b?.dataset.ibs === 'clear') { _ibApply({ [kind === 'stage' ? 'stages' : 'dates']: [] }); draw(); return; }
+    if (b?.dataset.ibs === 'done' || e.target.classList.contains('modal-backdrop')) wrap.remove();
+  });
+}
+
+// Стадии борда с цветами — один раз за сессию; пришли — перерисовать инбокс в цветах Monday
+// Правка из чата → строка инбокса обновляется сразу, без ожидания синка
+function _ibPatchConv(patch) {
+  const cid = screenState.conv?.conv_id;
+  const list = screenState.inbox?.conversations;
+  if (!cid || !Array.isArray(list)) return;
+  const c = list.find(x => x.id === cid);
+  if (c) Object.assign(c, patch, _mdCard?.item_id ? { board_item_id: String(_mdCard.item_id) } : {});
+  _inboxHash = '';
+}
+
+async function _ibEnsureStages() {
+  if (_mdStages) return;
+  try {
+    const r = await API.monday.stages();
+    _mdStages = r.stages || null;
+    _mdStageColors = r.colors || {};
+    if (currentScreen === 'inbox' && screenState.inbox?.conversations) render('inbox', screenState.inbox);
+  } catch {}
+}
+
+async function loadMondayCard(username, company, convId) {
   const box = document.getElementById('md-card');
   if (!box) return;
   try {
-    if (!_mdStages) {
-      _mdStages = await API.monday.stages().then(r => r.stages).catch(() => null);
-    }
+    if (!_mdStages) await _ibEnsureStages();
     const q = {};
     if (username) q.username = username;
     if (company) q.company = company;
+    if (convId) q.conv_id = convId;
     _mdCard = Object.keys(q).length ? await API.monday.card(q) : { found: false };
     _mdRender(_mdCard);
+    if (_mdCard?.found) _ibPatchConv({ board_stage: _mdCard.stage || null, board_next: _mdCard.next_touch || null });
   } catch (e) {
     _mdCard = null;
     _mdRender({ found: false, error: `Monday: ${e.message}` });
@@ -3591,7 +3768,7 @@ async function openConv(cid) {
       folder_ids: conv?.folder_ids || [],
     });
     _convHash = _hashConv(messages);
-    loadMondayCard(conv?.lead_username, conv?.lead_name);
+    loadMondayCard(conv?.lead_username, conv?.lead_name, cid);
     startPoll(() => pollConv(cid), 12000);   // заодно снимает поллинг инбокса — таймер один
     requestAnimationFrame(() => {
       const ml = document.getElementById('msg-list');
@@ -4373,6 +4550,14 @@ async function handleAction(action, el, e) {
     }
 
     // Monday: карточка лида над перепиской
+    case 'ib-md-filter': openIbFilterSheet(el.dataset.kind); break;
+    case 'ib-md-sort': _ibApply({ sort: screenState.inbox?.sort === 'next' ? 'recent' : 'next' }); break;
+    case 'ib-md-clear': _ibApply({ stages: [], dates: [], sort: 'recent' }); break;
+    case 'ib-md-drop': {
+      const key = el.dataset.kind === 'stage' ? 'stages' : 'dates';
+      _ibApply({ [key]: (screenState.inbox?.[key] || []).filter(x => x !== el.dataset.val) });
+      break;
+    }
     case 'md-open': {
       const id = el.dataset.item || _mdCard?.item_id;
       if (!id) return;
@@ -4388,9 +4573,11 @@ async function handleAction(action, el, e) {
       d.setDate(d.getDate() + parseInt(el.dataset.days || '0', 10));
       const iso = d.toISOString().slice(0, 10);
       try {
-        await API.monday.setNext(_mdCard.item_id, iso);
-        _mdCard.next_touch = iso; _mdRender(_mdCard);
-        toast(`Next Touch: ${iso}`);
+        const r = await API.monday.setNext(_mdCard.item_id, iso);
+        const day = r?.next_touch || iso;          // сб/вс сервер переносит на понедельник
+        _mdCard.next_touch = day; _mdRender(_mdCard);
+        _ibPatchConv({ board_next: day });
+        toast(`Next Touch: ${day}`);
       } catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
@@ -5136,6 +5323,17 @@ document.addEventListener('keydown', (e) => {
 // Поля черновиков Guru: растут под текст, правки сохраняются при уходе из поля
 document.addEventListener('input', (e) => { if (e.target.matches?.('textarea.guru-draft')) _autoGrow(e.target); });
 document.addEventListener('focusout', (e) => { if (e.target.matches?.('textarea.guru-draft')) guruAutosave(e.target); });
+// Next Touch любой датой из календаря
+document.addEventListener('change', async (e) => {
+  if (!e.target.matches?.('#md-date') || !_mdCard?.item_id || !e.target.value) return;
+  try {
+    const r = await API.monday.setNext(_mdCard.item_id, e.target.value);
+    const day = r?.next_touch || e.target.value;
+    _mdCard.next_touch = day; _mdRender(_mdCard);
+    _ibPatchConv({ board_next: day });
+    toast(`Next Touch: ${day}${day !== e.target.value ? ' (выходной → пн)' : ''}`);
+  } catch (err) { toast(`Ошибка: ${err.message}`); _mdRender(_mdCard); }
+});
 // Стадия сделки в Monday — прямо из полоски над перепиской
 document.addEventListener('change', async (e) => {
   if (!e.target.matches?.('#md-stage') || !_mdCard?.item_id) return;
@@ -5143,6 +5341,7 @@ document.addEventListener('change', async (e) => {
   try {
     await API.monday.setStage(_mdCard.item_id, stage);
     _mdCard.stage = stage;
+    _ibPatchConv({ board_stage: stage });
     toast(`Стадия: ${stage}`);
   } catch (err) {
     toast(`Ошибка: ${err.message}`);

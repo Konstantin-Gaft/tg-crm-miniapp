@@ -1289,3 +1289,25 @@ main {
   .list-item { padding: 12px 14px; }
   main { scrollbar-width: thin; }
 }
+
+/* ===== Inbox: фильтры «Этап» / «Next Touch» как в Monday ===== */
+.ib-md-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0 4px; }
+.ib-md-btn {
+  font-family: var(--font-h); font-weight: 700; font-size: 11px; letter-spacing: .3px;
+  padding: 5px 9px; border: 2px solid var(--ink); background: var(--card); color: var(--ink);
+  cursor: pointer; text-transform: uppercase; border-radius: 0;
+}
+.ib-md-btn.on { background: var(--ink); color: var(--card); }
+.ib-md-btn.ghost { border-color: var(--ink-2); color: var(--ink-2); }
+.ib-md-chosen { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 6px; }
+.ib-md-tag { font-size: 11px; padding: 2px 7px; background: var(--gold); color: var(--ink); cursor: pointer; border: 1px solid var(--ink); }
+.md-stage-pill { color: #fff !important; text-transform: none; }
+.ib-next { font-size: 11px; font-family: var(--font-num); color: var(--ink-2); padding: 2px 6px; border: 1px solid var(--ink-2); }
+.ib-next.today { background: var(--gold); color: var(--ink); border-color: var(--ink); }
+.ib-next.past { background: var(--red); color: var(--card); border-color: var(--red); }
+.ib-md-list { max-height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.ib-md-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.ib-md-row input { width: 18px; height: 18px; flex: 0 0 18px; }
+.ib-md-n { margin-left: auto; font-family: var(--font-num); color: var(--ink-2); font-size: 12px; }
+.ib-date-name { font-weight: 600; font-size: 13px; }
+.md-date { font-size: 11px; padding: 1px 4px; border: 1px solid var(--border); background: var(--card); color: var(--ink); max-width: 118px; }
