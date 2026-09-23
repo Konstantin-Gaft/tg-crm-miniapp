@@ -662,6 +662,12 @@ main {
   font: inherit; font-size: 13px; color: var(--blue);
   text-decoration: underline dotted; text-underline-offset: 3px;
 }
+
+/* ✎ рядом с ником: поправить битый @ник из радара (Monday обновляется сам) */
+.guru-card-fixu{background:none;border:0;padding:0 2px;margin-left:2px;cursor:pointer;
+  color:var(--muted,#8a8f98);font-size:12px;line-height:1;opacity:.55}
+.guru-card-fixu:hover{opacity:1}
+
 .guru-card-user:hover { color: var(--red); }
 .guru-card-right { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .guru-card-tag {

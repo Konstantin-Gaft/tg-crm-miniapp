@@ -206,6 +206,8 @@ const API = {
     // Приложить файл к черновику (asset_id из /api/assets) или убрать (null)
     setAsset:  (id, asset_id)      => API.req('POST', `/api/guru/actions/${id}/asset`, { asset_id }),
     edit:      (id, draft_text)    => API.req('POST', `/api/guru/actions/${id}/edit`, { draft_text }),
+    // битый @ник из радара: правим в карточке, эндпоинт сам обновляет Monday
+    setUsername: (id, username)    => API.req('POST', `/api/guru/actions/${id}/username`, { username }),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),
     queue:     ()                  => API.req('GET',  '/api/guru/queue'),
     // Глобальный выключатель рассылки листа ожидания (users.guru_outreach_running)

@@ -2205,8 +2205,11 @@ const screens = {
       const company = m ? m[1] : label;
       const uname = m ? m[2] : (a.target_username || '');
       const user = uname ? `<button class="guru-card-user" data-action="guru-open-tg" data-uname="${escape(uname)}" title="Открыть профиль в Telegram">@${escape(uname)}</button>` : '';
+      // ник из радара бывает с опечаткой: правим на месте, Monday обновится сам
+      const canFix = a.status === 'pending' || a.status === 'queued' || a.status === 'failed';
+      const fix = canFix ? `<button class="guru-card-fixu" data-action="guru-uname" data-id="${a.id}" data-uname="${escape(uname)}" title="Исправить @ник, в Monday обновится автоматически">✎</button>` : '';
       const same = uname && (company === '@' + uname || company === uname);
-      return `${same ? '' : `<b>${escape(company)}</b> `}${user}`;
+      return `${same ? '' : `<b>${escape(company)}</b> `}${user}${fix}`;
     };
     const draftHTML = (a, opts = {}) => {
       const isReply = a.trigger === 'incoming_reply';
@@ -2899,7 +2902,9 @@ let _guruHash = '';
 function _hashGuru(h) {
   // Хешируем минимально-достаточный набор полей: id и status у actions, id у messages.
   const m = (h.messages || []).map(x => x.id).join(',');
-  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}:${x.queue_pos||''}:${x.eta_label||''}`).join(',');
+  // target_username в хеше обязателен: правка битого @ника меняет только его, и без этого
+  // silent-рендер выходил по «ничего не изменилось», ник в карточке оставался старым до F5.
+  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}:${x.target_username||''}:${x.queue_pos||''}:${x.eta_label||''}`).join(',');
   return `${m}|${a}`;
 }
 
@@ -3161,6 +3166,23 @@ async function guruSkip(id) {
   try {
     const r = await API.guru.alreadyContacted(id);
     toast('✓ удалил: писать не будем, карточка уйдёт из вкладки Guru');
+    loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+}
+
+/** Битый @ник из радара (@luckypayHL вместо @LuckypayH): правим в карточке, эндпоинт
+ *  сам чинит Monday и сбрасывает старый tg_id, чтобы сообщение не ушло не тому. */
+async function guruSetUsername(id, current) {
+  const val = await prompt_('Правильный @ник лида\n\nв Monday обновится автоматически', current ? '@' + current : '@');
+  if (val == null) return;
+  const u = val.trim().replace(/^@+/, '');
+  if (!u || u.toLowerCase() === (current || '').toLowerCase()) return;
+  if (!/^[A-Za-z0-9_]{4,32}$/.test(u)) { toast('Ник: 4-32 символа, латиница, цифры, _'); return; }
+  try {
+    const r = await API.guru.setUsername(id, u);
+    toast(r.monday_updated ? `✓ @${u}, в Monday обновил`
+        : r.monday_error ? `@${u} исправил, Monday не ответил: ${r.monday_error}`
+        : `✓ @${u}`);
     loadGuru(true);
   } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
 }
@@ -4614,6 +4636,7 @@ async function handleAction(action, el, e) {
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
     case 'guru-open-tg': openTgUser(el.dataset.uname || ''); break;
+    case 'guru-uname':   guruSetUsername(parseInt(el.dataset.id, 10), el.dataset.uname || ''); break;
     case 'guru-queue-expand': {
       const id = parseInt(el.dataset.id, 10);
       if (_guruQueueOpen.has(id)) _guruQueueOpen.delete(id); else _guruQueueOpen.add(id);
