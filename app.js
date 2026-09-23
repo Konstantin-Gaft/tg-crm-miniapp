@@ -556,6 +556,29 @@ function premiumInfo(a) {
            color: '#16a34a', bg: 'rgba(22,163,74,.14)' };
 }
 
+// Прокси: дату оплаты вбивают руками в карточке. Напоминание в бот — за 2 дня (premium.py).
+function proxyInfo(a) {
+  const days = (a && a.proxy_days_left != null) ? a.proxy_days_left : null;
+  if (!a || !a.proxy || days == null) return null;
+  const until = fmtDay(a.proxy_until);
+  if (days < 0) return { urgent: true, text: `Прокси истёк ${until}`, hint: 'Продли — аккаунт отвалится от CRM',
+                         color: '#b91c1c', bg: 'rgba(185,28,28,.14)' };
+  if (days <= 3) return { urgent: true, text: `Прокси ${days} дн.`, hint: `Кончается ${until} — продлевай`,
+                          color: '#b91c1c', bg: 'rgba(185,28,28,.14)' };
+  if (days <= 14) return { urgent: true, text: `Прокси ${days} дн.`, hint: `До ${until}`,
+                           color: '#b45309', bg: 'rgba(180,83,9,.14)' };
+  return { urgent: false, text: `Прокси ${days} дн.`, hint: `Оплачен до ${until}`,
+           color: '#16a34a', bg: 'rgba(22,163,74,.14)' };
+}
+
+function proxyChip(a) {
+  const p = proxyInfo(a);
+  if (!p) return '';
+  return ` <span title="${escape(p.hint)}" style="display:inline-flex;align-items:center;gap:4px;
+    font-size:11px;font-weight:600;padding:2px 7px;border-radius:10px;
+    color:${p.color};background:${p.bg}">${p.urgent ? '⚠ ' : ''}${escape(p.text)}</span>`;
+}
+
 function premiumChip(a) {
   const p = premiumInfo(a);
   return `<span title="${escape(p.hint)}" style="display:inline-flex;align-items:center;gap:4px;
@@ -813,7 +836,7 @@ const screens = {
                 <div class="lead-body">
                   <div class="lead-name">${escape(a.first_name || a.phone)}${a.username ? ` <span style="color:var(--text-muted);font-weight:400">@${escape(a.username)}</span>` : ''}</div>
                   <div class="lead-status">${escape(a.phone)}${a.proxy ? ' · proxy ✓' : ''}</div>
-                  <div style="margin-top:5px">${premiumChip(a)}</div>
+                  <div style="margin-top:5px">${premiumChip(a)}${proxyChip(a)}</div>
                 </div>
               </div>
               <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
@@ -874,6 +897,12 @@ const screens = {
             Формат: <code style="background:var(--bg-soft);padding:1px 4px;border-radius:3px">186.243.180.125:64625:wMVgTVzT:Fq29ctzN</code><br>
             или полный URL <code style="background:var(--bg-soft);padding:1px 4px;border-radius:3px">socks5://user:pass@host:port</code>
           </div>
+          <label style="font-size:12px;color:var(--text-muted);margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+            <span>Прокси оплачен до</span>${proxyChip(a)}
+          </label>
+          <input id="ad-proxy-until" type="date" value="${a.proxy_until ? a.proxy_until.slice(0,10) : ''}"
+                 style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px;margin-top:4px">
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">За 2 дня до конца бот пришлёт напоминание в личку</div>
         </div>
 
         <div class="section-title">⭐ Telegram Premium</div>
@@ -895,7 +924,7 @@ const screens = {
             ${a.premium_source ? `Источник: <b>${escape(a.premium_source)}</b>` : ''}${a.premium_checked_at ? ` · проверено ${escape(fmtDay(a.premium_checked_at))}` : ''}
           </div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-            За 7 дней до конца бот пришлёт напоминание в личку.
+            За 2 дня до конца бот пришлёт напоминание в личку.
           </div>
         </div>`; })()}
 
@@ -3870,6 +3899,7 @@ async function handleAction(action, el, e) {
         send_pause_min:     parseInt(document.getElementById('ad-pause-min')?.value || '30', 10),
         send_pause_max:     parseInt(document.getElementById('ad-pause-max')?.value || '90', 10),
         premium_until:      document.getElementById('ad-premium-until')?.value || '',
+        proxy_until:        document.getElementById('ad-proxy-until')?.value || '',
       };
       if (data.send_pause_min < 1) data.send_pause_min = 1;
       if (data.send_pause_max < data.send_pause_min) data.send_pause_max = data.send_pause_min;
