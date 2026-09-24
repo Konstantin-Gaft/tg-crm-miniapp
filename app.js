@@ -325,7 +325,8 @@ function prompt_(msg, def = '', opts = {}) {
 }
 const openLink = (url) => tg?.openTelegramLink ? tg.openTelegramLink(url.replace('https://t.me/', 'https://t.me/')) : window.open(url, '_blank');
 const openTgUser = (uname) => {
-  const link = `https://t.me/${uname.replace('@', '')}`;
+  // ?profile: клиент открывает карточку профиля с полной подгрузкой, а не пустой чат
+  const link = `https://t.me/${uname.replace('@', '').trim()}?profile`;
   if (tg?.openTelegramLink) tg.openTelegramLink(link);
   else window.open(link, '_blank');
 };
