@@ -839,6 +839,42 @@ function _rowTicks(c) {
   return '<span class="conv-ticks pending" title="Ещё не подтверждено">…</span>';
 }
 
+/** Сколько ждёт ответа: «3 часа без ответа», «2 дня без ответа», просроченный Next Touch. */
+function waitingLabel(w) {
+  if (w.reason === 'next_touch') return `Next Touch ${w.next_touch || ''} просрочен`;
+  const h = w.waiting_hours || 0;
+  if (h < 24) return `${h} ${plural(h, 'час', 'часа', 'часов')} без ответа`;
+  const dd = Math.floor(h / 24);
+  return `${dd} ${plural(dd, 'день', 'дня', 'дней')} без ответа`;
+}
+
+/** Блок «ждут тебя» на главной: последнее слово за лидом. Клик ведёт прямо в диалог. */
+function waitingBlock(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (!list.length) return '';
+  const cards = list.slice(0, 5).map(w => {
+    const name = w.lead_name || (w.lead_username ? '@' + w.lead_username : `Чат #${w.conv_id}`);
+    const hot = (w.tags || []).some(t => ['price', 'demo', 'positive'].includes(t));
+    return `
+          <div class="card" data-action="open-conv" data-id="${w.conv_id}"
+               data-name="${escape(w.lead_name || '')}" data-uname="${escape(w.lead_username || '')}"
+               style="cursor:pointer${hot ? ';border-color:var(--gold)' : ''}">
+            <div class="card-row">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:14px">${escape(name)}${w.stage ? ` · <span style="color:var(--text-muted);font-weight:400">${escape(w.stage)}</span>` : ''}</div>
+                ${w.text ? `<div style="font-size:13px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape(w.text)}</div>` : ''}
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escape(waitingLabel(w))}</div>
+              </div>
+              <div class="list-arrow">›</div>
+            </div>
+          </div>`;
+  }).join('');
+  return `
+        <div class="section-title">Ждут тебя (${list.length})</div>
+        ${cards}
+        ${list.length > 5 ? `<button class="btn secondary full" style="margin-top:6px" data-action="goto-inbox">Все переписки (${list.length})</button>` : ''}`;
+}
+
 // ===== Screens =====
 const screens = {
 
@@ -867,6 +903,9 @@ const screens = {
             ★ <b>Guru:</b> ${escape(guruBits.join(' · '))}
           </div>
         </div>` : '';
+    // Ждут тебя: ход за Костей. Axiome написал «предложу ребятам» и ждал девять дней —
+    // сигнала не было ни на одном экране, потому что unread снимается первым же заходом.
+    const wfyBlock = waitingBlock(d.waiting_for_you);
     return `
       <div class="screen">
         <div class="card" style="background:var(--ink);color:var(--card);border-color:var(--ink);display:flex;align-items:center;gap:14px">
@@ -905,6 +944,7 @@ const screens = {
           </div>
         </div>
         ${guruLine}
+        ${wfyBlock}
 
         ${st.tasks && st.tasks.length ? `
           <div class="section-title">Сегодня надо (${st.tasks.length})</div>
@@ -3859,12 +3899,14 @@ async function loadMondayCard(username, company, convId) {
   }
 }
 
-async function openConv(cid) {
+// meta — подпись диалога, когда его открывают не из инбокса (блок «ждут тебя» на главной):
+// список переписок там ещё не загружен, и без этого в шапке стоял бы «Чат #12».
+async function openConv(cid, meta = null) {
   _pendingAttach = null;
   _mdCard = null;
   try {
     const messages = await API.inbox.messages(cid);
-    const conv = (screenState.inbox?.conversations || []).find(c => c.id === cid);
+    const conv = (screenState.inbox?.conversations || []).find(c => c.id === cid) || meta;
     render('conv', {
       conv_id: cid, messages,
       lead_tg_id: conv?.lead_tg_id || null,
@@ -4604,7 +4646,11 @@ async function handleAction(action, el, e) {
     }
 
     // Inbox
-    case 'open-conv': openConv(parseInt(el.dataset.id, 10)); break;
+    case 'open-conv': openConv(parseInt(el.dataset.id, 10),
+                               el.dataset.name || el.dataset.uname
+                                 ? { lead_name: el.dataset.name || null,
+                                     lead_username: el.dataset.uname || null }
+                                 : null); break;
     case 'conv-back': backToInbox(); break;
     case 'send-reply': {
       const inp = document.getElementById('reply-input');
@@ -4995,6 +5041,7 @@ async function handleAction(action, el, e) {
     }
 
     // ===== CRM new actions =====
+    case 'goto-inbox':     stopPoll(); backToInbox(); break;
     case 'goto-tasks':     loadTasks(); break;
     case 'goto-kb':        loadKb(); break;
     case 'goto-analytics': loadAnalytics(); break;
