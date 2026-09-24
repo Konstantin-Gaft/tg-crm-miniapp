@@ -2439,7 +2439,7 @@ const screens = {
       const isReply = a.trigger === 'incoming_reply';
       const editable = a.status === 'pending' || a.status === 'queued';
       const text = a.draft_text || '';
-      const warn = editable && guruMentionsSource(text);
+      const warn = editable ? guruSourceIssue(a) : null;
       const tag = opts.showList && a.list_name
         ? `<span class="guru-card-tag" title="${escape(a.list_name)}">${escape(chipLabel(a.list_name))}</span>` : '';
       const meta = a.status === 'approved' ? '<span class="guru-card-meta">⏳ отправляется</span>'
@@ -2457,7 +2457,7 @@ const screens = {
         ${isReply && a.intent ? `<div class="guru-card-intent"><span class="muted small">Входящее:</span> «${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
         ${a.monday_item_id ? `<div class="md-mini">Monday: ${escape(a.company || 'карточка лида')} <button class="md-mini-link" data-action="md-open" data-item="${escape(a.monday_item_id)}" title="Открыть карточку на борде">↗</button></div>` : ''}
         ${a.asset_id ? `<div class="guru-card-attach">📎 файл #${a.asset_id} уйдёт вместе с текстом</div>` : ''}
-        ${warn ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
+        ${warn ? '<div class="guru-card-warn">⚠ ' + escape(warn.msg) + ': убери до отправки</div>' : ''}
         ${(a.dup || []).length ? `<div class="guru-card-dup">⚠ ${escape(a.dup.join(' · '))}</div>` : ''}
         ${editable && /\{[^{}]*\|[^{}]*\}/.test(text)
           ? `<div class="guru-card-preview">каждому уйдёт свой вариант, например: ${escape(text.replace(/\{([^{}]+)\}/g, (_, g) => g.split('|')[0]))}</div>`
@@ -2526,6 +2526,13 @@ const screens = {
     const feedEmpty = groupOf && groupOf.total
       ? `в этом списке всё разобрано${groupOf.total ? `, ${groupOf.total} в листе ожидания` : ''}`
       : queued.length ? `черновики разобраны, ${queued.length} в листе ожидания` : 'черновиков нет';
+    // Валидатор (backend/services/draft_validator): жёсткие issues видно строкой над лентой,
+    // чтобы брак не искать по карточкам. Локальная подсветка источника остаётся в карточке.
+    const badDrafts = feed.filter(a => (a.status === 'pending' || a.status === 'queued')
+      && (a.validator || []).some(i => i.hard));
+    const validatorHTML = badDrafts.length
+      ? `<div class="guru-card-warn" id="guru-validator-note">⚠ ${badDrafts.length} ${plural(badDrafts.length, 'черновик не прошёл', 'черновика не прошли', 'черновиков не прошли')} проверку: источник контакта или дубль текста</div>`
+      : '';
     const feedHTML = feed.length
       ? feed.map(a => draftHTML(a, { showList: view === 'all' })).join('')
       : `<div class="guru-feed-empty">${escape(feedEmpty)}<br><span class="muted small">новые появятся из списков радара или из чата с Guru</span></div>`;
@@ -2577,7 +2584,7 @@ const screens = {
       const open = _guruQueueOpen.has(it.id);
       const editor = !open ? '' : a ? `
           <div class="guru-queue-edit">
-            ${guruMentionsSource(a.draft_text) ? '<div class="guru-card-warn">⚠ похоже, в тексте назван источник (чат, форум, «видел пост»): убери до отправки</div>' : ''}
+            ${guruSourceIssue(a) ? '<div class="guru-card-warn">⚠ ' + escape(guruSourceIssue(a).msg) + ': убери до отправки</div>' : ''}
             <textarea class="guru-draft" id="guru-draft-${a.id}" rows="1">${escape(a.draft_text || '')}</textarea>
             <div class="guru-actions"><span class="guru-save-hint" id="guru-save-${a.id}">правки сохраняются сами</span></div>
           </div>` : '<div class="muted small" style="padding:2px 0 6px">текст ещё грузится…</div>';
@@ -2628,6 +2635,7 @@ const screens = {
       </div>
       ${queueHTML}
       ${chipsHTML}
+      ${view === 'chat' ? '' : validatorHTML}
       <div class="guru-log" id="guru-log">
         ${view === 'chat' ? chatHTML : feedHTML}
       </div>
@@ -3114,15 +3122,10 @@ const _guruView = () => { try { return localStorage.getItem('guru_list_filter') 
 /** Раскрытые строки листа ожидания (id действий) — переживают перерисовку поллингом. */
 const _guruQueueOpen = new Set();
 // Костя: НИКОГДА не называть в сообщении, где найден контакт (чат/форум/«видел пост»), иначе лид
-// пожалуется и его выкинут из чата. Подсветка на карточке; те же паттерны в guru_list_drafts.py.
-const _GURU_SOURCE_RE = [
-  /\b(saw|seen|noticed|found|came across)\b[^\n]{0,60}\b(post|message|thread)s?\b/i,
-  /\bcame up in\b/i, /\byour post\b/i, /\bin the (chat|group|channel|forum)\b/i, /\b(chat|forum|community)\b/i,
-  /[Вв]идел[аи]?[^\n]{0,60}\sв\s+[A-ZА-ЯЁ]/, /(ваш|твой|вашему|вашего|твоему|твоего)\s+пост/i,
-  /\sв\s(чате|группе|канале|форуме|беседе)/i, /на форуме/i, /(^|\s)чат[аеу]?(?=[\s,.!?]|$)/i, /форум/i,
-  /high[- ]?risk forum/i, /igaming chat/i, /bd in web3/i, /processing russia/i,
-];
-const guruMentionsSource = (t) => !!t && _GURU_SOURCE_RE.some(re => re.test(t));
+// пожалуется и его выкинут из чата. Правила живут только на бэкенде
+// (backend/services/draft_validator), сюда они приезжают в DTO действия полем validator.
+const guruSourceIssue = (a) =>
+  ((a && a.validator) || []).find(i => i.code === 'source' || i.code === 'source_weak') || null;
 /** Поле черновика растёт под текст: всё сообщение видно целиком, без внутренней прокрутки. */
 function _autoGrow(t) {
   if (!t) return;
@@ -3388,9 +3391,32 @@ async function waitForSendJob(jobId, { every = 2000, limit = 300000 } = {}) {
 
 const cleanErr = (e) => (e?.message || '').replace(/^\d+\s+/, '') || 'ошибка';
 
-async function guruReject(id) {
-  try { await API.guru.reject(id); loadGuru(true); }
-  catch (e) { toast(`Ошибка: ${e.message}`); }
+// Причина отказа в один тап: раньше у 99 отклонённых её не было вовсе и агенту не на чем
+// было учиться. Причина необязательна — «без причины» рядом, чтобы отклонять не перестали.
+const GURU_REJECT_REASONS = [
+  ['not_icp', 'не ICP'], ['bad_text', 'плохой текст'], ['already', 'уже писали'],
+  ['support', 'саппорт'], ['other', 'другое'],
+];
+function guruReject(id) {
+  const card = document.querySelector(`.guru-card[data-act-id="${id}"]`);
+  if (!card) return guruRejectDo(id, '');
+  const open = card.querySelector('.guru-reject-reasons');
+  if (open) { open.remove(); return; }            // повторный тап по «Отклонить» — свернуть
+  const row = document.createElement('div');
+  row.className = 'guru-actions guru-reject-reasons';
+  row.innerHTML = '<span class="muted small">Почему:</span>'
+    + GURU_REJECT_REASONS.map(([k, label]) =>
+        `<button class="btn sm ghost" data-action="guru-reject-do" data-id="${id}" data-reason="${k}">${label}</button>`).join('')
+    + `<button class="btn sm ghost" data-action="guru-reject-do" data-id="${id}" data-reason="" title="Отклонить, причину не указывать">без причины</button>`;
+  (card.querySelector('.guru-actions') || card).insertAdjacentElement('afterend', row);
+}
+/** «Плохой текст» на бэкенде уходит на перегенерацию тем же лидом, остальные причины — просто отказ. */
+async function guruRejectDo(id, reason) {
+  try {
+    await API.guru.reject(id, reason || null);
+    if (reason === 'bad_text') toast('отклонил, перегенерю текст этому лиду');
+    loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
 }
 /** «Уже писал ему с другого аккаунта»: карточка закрывается, лид помечается do_not_contact,
  *  чтобы радар и дедуп больше не приносили его в списки. */
@@ -4986,6 +5012,7 @@ async function handleAction(action, el, e) {
     case 'guru-approve': guruApprove(parseInt(el.dataset.id, 10)); break;
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
+    case 'guru-reject-do': guruRejectDo(parseInt(el.dataset.id, 10), el.dataset.reason || ''); break;
     case 'guru-skip':    guruSkip(parseInt(el.dataset.id, 10)); break;
     case 'guru-attach':  guruAttach(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;

@@ -200,7 +200,7 @@ const API = {
     actions:   (status)            => API.req('GET',  `/api/guru/actions${status?`?status=${status}`:''}`),
     // draft_text: текст из поля карточки на момент апрува (null = как в базе)
     approve:   (id, draft_text=null) => API.req('POST', `/api/guru/actions/${id}/approve`, draft_text != null ? { draft_text } : null),
-    reject:    (id)                => API.req('POST', `/api/guru/actions/${id}/reject`),
+    reject:    (id, reason=null)   => API.req('POST', `/api/guru/actions/${id}/reject`, reason ? { reason } : null),
     // «уже писал с другого аккаунта»: закрыть черновик + пометить лида do_not_contact
     alreadyContacted: (id)         => API.req('POST', `/api/guru/actions/${id}/already_contacted`),
     // Приложить файл к черновику (asset_id из /api/assets) или убрать (null)
