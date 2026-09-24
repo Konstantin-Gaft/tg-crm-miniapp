@@ -584,6 +584,47 @@ function healthChip(a) {
   </span> `;
 }
 
+/** Состояние контура рассылки словами: воркер, простой, ёмкость на сегодня, запас очереди.
+ *  Поля из outreach_queue.snapshot(). Ничего не включает — рассылку запускает только кнопка. */
+function queueStateBits(q) {
+  if (!q) return [];
+  const bits = [];
+  if (q.worker_alive === false) bits.push('⚠ воркер не запущен');
+  if (q.paused_days != null) bits.push(`⏸ стоит ${q.paused_days} ${plural(q.paused_days, 'день', 'дня', 'дней')}`);
+  else if (q.running === false) bits.push('⏸ на паузе');
+  if (typeof q.capacity_today === 'number') bits.push(`ёмкость ${q.capacity_today}/день`);
+  if (q.runway_days != null) bits.push(`runway ~${q.runway_days} дн`);
+  else if (q.capacity_today === 0) bits.push('runway: ёмкость 0');
+  return bits;
+}
+
+/** «Готов ~дата» — берём готовое поле ready_at из /api/accounts (ISO или null).
+ *  Настройки аккаунта не трогаем и подсказки не разбираем: дату считает бэкенд. */
+function readyDateText(a) {
+  const iso = a && a.ready_at;
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return `готов ~${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** Честная ёмкость аккаунта словами: не в раздаче = холодные касания с него не уходят
+ *  (ручной 0, рамп прогрева, пауза), ответы в живых диалогах уходят всё равно. */
+function capacityNote(a) {
+  const bits = [];
+  if (a && a.in_rotation === false) {
+    bits.push((a.daily_limit || 0) === 0 ? 'лимит 0 — не в раздаче' : 'не в раздаче');
+  }
+  const ready = readyDateText(a);
+  if (ready) bits.push(ready);
+  return bits.join(' · ');
+}
+
+function queueRunMeta(q) {
+  const bits = queueStateBits(q);
+  return bits.length ? `<div class="muted small" style="padding:6px 2px 0">${escape(bits.join(' · '))}</div>` : '';
+}
+
 function healthCardHTML(a) {
   const h = a && a.health;
   if (!h) return '';
@@ -815,6 +856,17 @@ const screens = {
     const queueLine = d.queue
       ? `${d.queue} в очереди${d.eta_days ? ` · ETA ~${d.eta_days} дн` : ''}`
       : 'очередь пуста';
+    // Контур рассылки Guru: стоит/идёт, ёмкость и runway. Без этой строки простой в двое
+    // суток был не виден ни на одном экране (аудит 24.09.2026).
+    const gq = st?.queue;
+    const guruBits = queueStateBits(gq);
+    if (gq && (gq.total || gq.pending)) guruBits.unshift(`${gq.total} в очереди · ${gq.pending || 0} на апруве`);
+    const guruLine = guruBits.length ? `
+        <div class="card" style="margin-top:8px">
+          <div style="font-size:13px;color:var(--text-muted)">
+            ★ <b>Guru:</b> ${escape(guruBits.join(' · '))}
+          </div>
+        </div>` : '';
     return `
       <div class="screen">
         <div class="card" style="background:var(--ink);color:var(--card);border-color:var(--ink);display:flex;align-items:center;gap:14px">
@@ -852,6 +904,7 @@ const screens = {
             ⚡ <b>Sender:</b> ${escape(queueLine)}
           </div>
         </div>
+        ${guruLine}
 
         ${st.tasks && st.tasks.length ? `
           <div class="section-title">Сегодня надо (${st.tasks.length})</div>
@@ -979,7 +1032,7 @@ const screens = {
               </div>
             </div>
             <div style="display:flex;gap:14px;font-size:12px;color:var(--text-muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-              <span>Сегодня: <b style="color:var(--text)">${a.sent_today}/${a.daily_limit}</b></span>
+              <span>Сегодня: <b style="color:var(--text)">${a.sent_today}/${a.daily_limit}</b>${a.in_rotation === false ? ' <span style="color:#c54" title="Холодные касания с аккаунта не уходят (лимит 0, рамп прогрева или пауза); ответы в живых диалогах уходят">· не в раздаче</span>' : ''}</span>
               <span>Всего: <b style="color:var(--text)">${st.sent_total ?? '—'}</b></span>
               <span>Ответов: <b style="color:var(--text)">${st.replied ?? '—'}</b></span>
               <span>Диалогов: <b style="color:var(--text)">${st.conversations ?? '—'}</b></span>
@@ -1006,7 +1059,7 @@ const screens = {
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-            <div><div style="font-size:11px;color:var(--text-muted)">Сегодня</div><div style="font-weight:600">${a.sent_today}/${a.daily_limit}</div></div>
+            <div><div style="font-size:11px;color:var(--text-muted)">Сегодня</div><div style="font-weight:600">${a.sent_today}/${a.daily_limit}</div>${capacityNote(a) ? `<div style="font-size:11px;color:#c54;margin-top:2px" title="Ответы лидам в живых диалогах уходят и при нуле, холодные касания — нет">${escape(capacityNote(a))}</div>` : ''}</div>
             <div><div style="font-size:11px;color:var(--text-muted)">Всего отправлено</div><div style="font-weight:600">${stat.sent_total ?? '—'}</div></div>
             <div><div style="font-size:11px;color:var(--text-muted)">Ответов</div><div style="font-weight:600">${stat.replied ?? '—'}</div></div>
             <div><div style="font-size:11px;color:var(--text-muted)">Диалогов</div><div style="font-weight:600">${stat.conversations ?? '—'}</div></div>
@@ -1095,7 +1148,7 @@ const screens = {
                      style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;margin-top:2px">
             </div>
           </div>
-          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Безопасно: 30–90 сек. Агрессивно (риск-зона): 5–30 сек. Совсем безопасно: 60–180 сек.</div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:8px">${escape(a.pause_hint || `Сейчас ${a.send_pause_min || 30}–${a.send_pause_max || 90} с между отправками`)}</div>
         </div>
         ${a.status === 'needs_reauth' ? `
           <div class="card" style="background:#fee2e2;color:#991b1b;font-size:13px;margin-bottom:8px">
@@ -2552,6 +2605,7 @@ const screens = {
         <div class="guru-queue-body">
           <button class="btn guru-queue-run ${qRunning ? 'stop' : 'start'}" data-action="guru-queue-run" data-run="${qRunning ? '0' : '1'}"
             title="${qRunning ? 'Остановить рассылку: очередь сохранится, новые сообщения не уйдут' : 'Запустить рассылку: очередь пойдёт по лимиту, окну и паузе аккаунта'}">${qRunning ? '⏸ Пауза рассылки' : '▶ Запустить рассылку'}</button>
+          ${queueRunMeta(q)}
           ${qDead ? '<div class="guru-queue-deadnote">⚠ Воркер рассылки на сервере сейчас не работает, сообщения не уйдут. Запуск сохранится и сработает, как только воркер поднимется.</div>' : ''}
           ${(q.paused_accounts || []).map(p => `<div class="guru-queue-deadnote">⏸ ${escape(p.phone)} на паузе после жалобы до ${escape(fmtTime(p.until))} — с этого аккаунта сейчас ничего не уходит</div>`).join('')}
           ${(q.accounts||[]).map(accLine).join('')}
@@ -3004,15 +3058,22 @@ let _dashHash = '';
 async function loadDashboard(silent=false) {
   if (silent && currentScreen !== 'dashboard') return;
   try {
-    const [data, tasks] = await Promise.all([
+    // queue — состояние контура Guru (runway, ёмкость, простой). Падение снимка не должно
+    // ронять главную: без него просто нет строки Guru.
+    const [data, tasks, queue] = await Promise.all([
       API.dashboard.get(),
       API.tasks.list('today').catch(() => []),
+      API.guru.queue().catch(() => null),
     ]);
-    const h = JSON.stringify([data, tasks?.map(t=>t.id+':'+t.text)]);
+    // В хэш берём только устойчивые поля очереди: ETA пересчитывается каждый запрос и
+    // перерисовывала бы экран на каждом поллинге.
+    const qSig = queue ? [queue.running, queue.worker_alive, queue.total, queue.pending,
+                          queue.capacity_today, queue.runway_days, queue.paused_days] : null;
+    const h = JSON.stringify([data, tasks?.map(t=>t.id+':'+t.text), qSig]);
     if (silent && h === _dashHash) return;
     _dashHash = h;
     if (silent && currentScreen !== 'dashboard') return;   // пока летел ответ, юзер ушёл на другой экран
-    render('dashboard', { data, tasks });
+    render('dashboard', { data, tasks, queue });
   } catch (e) {
     if (!silent) {
       render('dashboard', { data: null, tasks: [], error: e.message });
@@ -3148,7 +3209,7 @@ async function loadGuru(silent=false) {
       API.guru.queue().catch(() => null),
     ]);
     if (seq < _guruRenderedSeq) return;   // уже отрисовано более свежее состояние
-    const qSig = queue ? `${queue.running === true ? 'run' : 'stop'}:${queue.worker_alive === false ? 'dead' : 'alive'}:${queue.total}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}:${(queue.sent_recent||[]).map(x => x.id).join(',')}` : '';
+    const qSig = queue ? `${queue.running === true ? 'run' : 'stop'}:${queue.worker_alive === false ? 'dead' : 'alive'}:${queue.total}:${queue.paused_days}/${queue.capacity_today}/${queue.runway_days}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}:${(queue.sent_recent||[]).map(x => x.id).join(',')}` : '';
     const newHash = _hashGuru(h) + '|' + (settings?.default_mode || '') + '|' + qSig;
     if (silent && newHash === _guruHash) return;   // ничего не изменилось — не дёргаем DOM
     _guruHash = newHash;
@@ -3395,14 +3456,28 @@ async function guruUnqueue(id) {
 // Воркер outreach_queue шлёт queued-действия только при users.guru_outreach_running=true.
 let _queueRunBusy = false;   // защита от двойного тапа: второй запрос перещёлкнул бы флаг обратно
 
-/** Подтверждение: tg.showConfirm (Bot API 6.2+, текст ≤256) или window.confirm вне Telegram. */
-const confirmQueueRun_ = (msg) => new Promise((resolve) => {
-  if (tg?.showConfirm && (!tg.isVersionAtLeast || tg.isVersionAtLeast('6.2'))) {
-    try { tg.showConfirm(msg.length > 256 ? msg.slice(0, 255) + '…' : msg, (ok) => resolve(!!ok)); return; }
-    catch {}
+/** Подтверждение: tg.showConfirm (Bot API 6.2+, текст ≤256) или window.confirm вне Telegram.
+ *
+ *  Два капкана, из-за которых единственная кнопка запуска аутрича умирала молча (аудит 24.09.2026):
+ *  telegram-web-app.js подключён и в обычном браузере, поэтому tg.showConfirm там существует,
+ *  вызывается — и колбэк не приходит НИКОГДА (промис висел вечно, кнопка оставалась disabled
+ *  до перезагрузки); внутри Telegram showConfirm так же молча не открывается, если уже открыт
+ *  другой popup. Поэтому: вне Telegram (platform 'unknown') сразу нативный confirm, внутри —
+ *  ждём колбэк, но не дольше CONFIRM_WAIT_MS и возвращаем 'timeout'. Молчание = не запускаем:
+ *  рассылку включает только явное «да». */
+const CONFIRM_WAIT_MS = 30000;   // столько человеку хватает прочитать 4 строки подтверждения
+const inTelegram_ = () => !!(tg && tg.platform && tg.platform !== 'unknown');
+const confirmQueueRun_ = (msg) => {
+  if (!(inTelegram_() && tg.showConfirm && (!tg.isVersionAtLeast || tg.isVersionAtLeast('6.2')))) {
+    return Promise.resolve(window.confirm(msg));
   }
-  resolve(window.confirm(msg));
-});
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), CONFIRM_WAIT_MS);
+    try { tg.showConfirm(msg.length > 256 ? msg.slice(0, 255) + '…' : msg,
+                         (ok) => { clearTimeout(timer); resolve(!!ok); }); }
+    catch { clearTimeout(timer); resolve(window.confirm(msg)); }
+  });
+};
 
 /** Когда уйдёт первое сообщение: самый ранний next_eta по аккаунтам, запасной — первая строка очереди. */
 function _queueFirstEta(q) {
@@ -3447,7 +3522,9 @@ async function guruQueueRun(el) {
       // Считаем подтверждение по свежему снимку: кэш поллинга мог отстать на 8 с.
       let q = screenState.guru?.queue || null;
       try { q = await API.guru.queue(); } catch {}
-      if (!(await confirmQueueRun_(_queueRunConfirmText(q)))) { _done(); return; }
+      const ok = await confirmQueueRun_(_queueRunConfirmText(q));
+      if (ok === 'timeout') { toast('Подтверждение не открылось, нажми ещё раз'); return; }
+      if (!ok) return;
     }
     btns.forEach(b => { b.textContent = running ? '… запускаю' : '… ставлю на паузу'; });
     const r = await API.guru.queueRun(running);
@@ -3469,11 +3546,14 @@ async function guruQueueRun(el) {
       screenState.guru.queue = r;
     }
     _guruHash = '';            // форсим перерисовку, даже если поллинг уже подтянул новый флаг
-    _done();                   // после render старые кнопки отсоединены: их label на экран не вернётся
     loadGuru(true);
   } catch (e) {
-    _done();
     toast(`Ошибка: ${cleanErr(e)}`);
+  } finally {
+    // Только finally: любой ранний return и любое зависшее подтверждение раньше оставляли
+    // _queueRunBusy=true навсегда, и кнопка не отвечала до перезагрузки страницы.
+    // После render старые кнопки отсоединены: их label на экран не вернётся.
+    _done();
   }
 }
 async function guruEdit(id) {
