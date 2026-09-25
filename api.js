@@ -210,6 +210,8 @@ const API = {
     edit:      (id, draft_text)    => API.req('POST', `/api/guru/actions/${id}/edit`, { draft_text }),
     // битый @ник из радара: правим в карточке, эндпоинт сам обновляет Monday
     setUsername: (id, username)    => API.req('POST', `/api/guru/actions/${id}/username`, { username }),
+    // Профиль ника со страницы t.me (фото, имя, био) — карточка по тапу на @ник
+    tgProfile: (u)                 => API.req('GET',  `/api/guru/tg-profile?u=${encodeURIComponent(u)}`),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),
     queue:     ()                  => API.req('GET',  '/api/guru/queue'),
     // Под-сегменты ленты (список × язык × категория × группа) с счётчиками для чипов

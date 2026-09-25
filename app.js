@@ -325,11 +325,59 @@ function prompt_(msg, def = '', opts = {}) {
 }
 const openLink = (url) => tg?.openTelegramLink ? tg.openTelegramLink(url.replace('https://t.me/', 'https://t.me/')) : window.open(url, '_blank');
 const openTgUser = (uname) => {
-  // ?profile: клиент открывает карточку профиля с полной подгрузкой, а не пустой чат
-  const link = `https://t.me/${uname.replace('@', '').trim()}?profile`;
+  // Без ?profile: на части клиентов (25.09 у Кости) такая ссылка не делает ничего
+  const link = `https://t.me/${uname.replace('@', '').trim()}`;
   if (tg?.openTelegramLink) tg.openTelegramLink(link);
   else window.open(link, '_blank');
 };
+// Тап по @нику в Guru: профиль прямо здесь (фото, имя, био со страницы t.me), чтобы проверить
+// «норм ли чел», не выходя из ленты. Переход в Telegram по ссылке клиенты делают по-разному:
+// 24.09 открывался пустой чат, 25.09 с ?profile тап не делал ничего. В Telegram — кнопкой.
+async function openTgPreview(uname) {
+  const u = (uname || '').replace('@', '').trim();
+  if (!u) return;
+  const wrap = document.createElement('div');
+  const draw = (p, err) => {
+    let body;
+    if (err) body = `<div class="tgp-warn">Профиль не загрузился: ${escape(err)}</div>`;
+    else if (!p) body = '<div class="muted small">Загружаю профиль…</div>';
+    else {
+      const bad = p.kind !== 'user' || p.support;
+      const seen = p.last_seen_days == null ? ''
+        : p.last_seen_days === 0 ? ' · в сети сегодня' : ` · был в сети ${p.last_seen_days} дн. назад`;
+      body = `
+        <div class="tgp-head">
+          ${p.photo ? `<img class="tgp-photo" src="${escape(p.photo)}" alt="" onerror="this.remove()">` : ''}
+          <div class="tgp-who">
+            <div class="tgp-name">${escape(p.name || '@' + u)}</div>
+            <div class="muted small">@${escape(u)}</div>
+          </div>
+        </div>
+        ${p.bio ? `<div class="tgp-bio">${escape(p.bio)}</div>` : '<div class="muted small">Описания нет</div>'}
+        <div class="${bad ? 'tgp-warn' : 'muted small'}">${escape(p.reason || '')}${escape(seen)}</div>`;
+    }
+    wrap.innerHTML = `
+      <div class="modal-backdrop">
+        <div class="modal-sheet tgp-sheet">
+          ${body}
+          <div class="tgp-btns">
+            <button class="btn ghost" data-tgp="copy">Скопировать @ник</button>
+            <button class="btn primary" data-tgp="open">Открыть в Telegram</button>
+          </div>
+        </div>
+      </div>`;
+  };
+  draw(null);
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-tgp]');
+    if (b?.dataset.tgp === 'copy') { copyText('@' + u); return; }
+    if (b?.dataset.tgp === 'open') { wrap.remove(); openTgUser(u); return; }
+    if (e.target.classList.contains('modal-backdrop')) wrap.remove();
+  });
+  try { draw(await API.guru.tgProfile(u)); }
+  catch (e) { draw(null, e.message); }
+}
 
 // ===== State =====
 let currentScreen = 'dashboard';
@@ -2473,7 +2521,7 @@ const screens = {
       const m = label.match(/^(.*?)\s*·\s*@([A-Za-z0-9_]+)\s*$/);
       const company = m ? m[1] : label;
       const uname = m ? m[2] : (a.target_username || '');
-      const user = uname ? `<button class="guru-card-user" data-action="guru-open-tg" data-uname="${escape(uname)}" title="Открыть профиль в Telegram">@${escape(uname)}</button>` : '';
+      const user = uname ? `<button class="guru-card-user" data-action="guru-open-tg" data-uname="${escape(uname)}" title="Профиль: фото, имя, описание">@${escape(uname)}</button>` : '';
       // ник из радара бывает с опечаткой: правим на месте, Monday обновится сам
       const canFix = a.status === 'pending' || a.status === 'queued' || a.status === 'failed';
       const fix = canFix ? `<button class="guru-card-fixu" data-action="guru-uname" data-id="${a.id}" data-uname="${escape(uname)}" title="Исправить @ник, в Monday обновится автоматически">✎</button>` : '';
@@ -5395,7 +5443,7 @@ async function handleAction(action, el, e) {
     case 'guru-attach':  guruAttach(parseInt(el.dataset.id, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
-    case 'guru-open-tg': openTgUser(el.dataset.uname || ''); break;
+    case 'guru-open-tg': openTgPreview(el.dataset.uname || ''); break;
     case 'guru-uname':   guruSetUsername(parseInt(el.dataset.id, 10), el.dataset.uname || ''); break;
     case 'guru-queue-expand': {
       const id = parseInt(el.dataset.id, 10);

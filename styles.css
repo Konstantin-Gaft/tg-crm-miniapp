@@ -1311,3 +1311,14 @@ main {
 .ib-md-n { margin-left: auto; font-family: var(--font-num); color: var(--ink-2); font-size: 12px; }
 .ib-date-name { font-weight: 600; font-size: 13px; }
 .md-date { font-size: 11px; padding: 1px 4px; border: 1px solid var(--border); background: var(--card); color: var(--ink); max-width: 118px; }
+
+/* Профиль ника по тапу в Guru (openTgPreview) */
+.tgp-sheet { display: flex; flex-direction: column; gap: 10px; }
+.tgp-head { display: flex; align-items: center; gap: 12px; }
+.tgp-photo { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; border: 1px solid var(--ink-3); }
+.tgp-who { min-width: 0; }
+.tgp-name { font-weight: 700; font-size: 16px; overflow-wrap: anywhere; }
+.tgp-bio { font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tgp-warn { font-size: 13px; color: var(--red-deep); }
+.tgp-btns { display: flex; gap: 8px; margin-top: 4px; }
+.tgp-btns .btn { flex: 1; min-height: 44px; }
