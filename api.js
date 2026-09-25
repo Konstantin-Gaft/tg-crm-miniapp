@@ -146,6 +146,8 @@ const API = {
   analytics: {
     templates: () => API.req('GET', '/api/analytics/templates'),
     accounts:  () => API.req('GET', '/api/analytics/accounts'),
+    // Окно метрик (по умолчанию 30 дней) — подпись «за N дней» рядом с reply rate
+    funnel:    (days) => API.req('GET', `/api/analytics/funnel${days ? `?days=${days}` : ''}`),
   },
 
   ideas: {
@@ -210,6 +212,20 @@ const API = {
     setUsername: (id, username)    => API.req('POST', `/api/guru/actions/${id}/username`, { username }),
     unqueue:   (id)                => API.req('POST', `/api/guru/actions/${id}/unqueue`),
     queue:     ()                  => API.req('GET',  '/api/guru/queue'),
+    // Под-сегменты ленты (список × язык × категория × группа) с счётчиками для чипов
+    segments:  ()                  => API.req('GET',  '/api/guru/segments'),
+    // «Одобрить все N»: весь отфильтрованный сегмент в очередь одним запросом
+    approveBulk: (body)            => API.req('POST', '/api/guru/actions/approve_bulk', body),
+    // Тексты касаний 2–3 из карточки первого касания (payload.chain)
+    setChain:  (id, chain)         => API.req('POST', `/api/guru/actions/${id}/chain`, { chain }),
+    // Undo к «Удалить»: черновик снова pending, лид выходит из стоп-листа
+    restore:   (id)                => API.req('POST', `/api/guru/actions/${id}/restore`),
+    // Автодолив лидов с борда (таск 10). Нет эндпоинта — блок в UI просто не показывается.
+    supply: {
+      status:   ()                 => API.req('GET',   '/api/guru/supply/status'),
+      refill:   ()                 => API.req('POST',  '/api/guru/supply/refill'),
+      settings: (d)                => API.req('PATCH', '/api/guru/supply/settings', d),
+    },
     // Глобальный выключатель рассылки листа ожидания (users.guru_outreach_running)
     queueRun:  (running)           => API.req('POST', '/api/guru/queue/run', { running: !!running }),
     setMode:   (conv_id, guru_mode)=> API.req('POST', `/api/guru/conv/${conv_id}/mode`, { guru_mode }),
