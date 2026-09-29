@@ -1957,7 +1957,7 @@ const screens = {
       if (dKey === _mskDateKey(y))    return 'Вчера';
       return new Intl.DateTimeFormat('ru-RU', { timeZone: MSK, day:'numeric', month:'long' }).format(d);
     };
-    const isMedia = (txt) => /^(🖼 Фото|🎥 Видео|🎤 Голосовое|📎 Документ|📍 Гео|📨 Медиа|\[(image|video|audio|application)\/)/i.test(txt);
+    const isMedia = (txt) => /^(🖼 Фото|🎥 Видео|⭕ Кружок|🎤 Голосовое|🎵 Аудио|🙂 Стикер|📎 Документ|📍 Гео|📨 Медиа|\[(image|video|audio|application)\/)/i.test(txt);
 
     return `
       <div class="conv-screen">
@@ -1981,14 +1981,17 @@ const screens = {
             const showDate = day !== lastDate;
             lastDate = day;
             const out = m.direction === 'out';
-            const media = isMedia(m.text);
+            const media = !!m.media || isMedia(m.text);
+            // подпись к файлу показываем текстом под вложением; плейсхолдер «🖼 Фото» — нет
+            const caption = m.media && !isMedia(m.text) ? m.text : '';
             // Telegram даёт править своё сообщение 48 часов; подпись к файлу не трогаем
             const age = Date.now() - (parseUTC(m.sent_at)?.getTime() || 0);
             const canEdit = out && !media && age < 48 * 3600 * 1000;
             return (showDate ? `<div class="conv-date">${day}</div>` : '') + `
               <div class="conv-row ${out ? 'out' : 'in'}">
                 <div class="conv-bubble ${out ? 'out' : 'in'} ${media ? 'media' : ''}">
-                  ${media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
+                  ${m.media && m.media !== 'geo' ? `<div class="conv-media" data-cid="${st.conv_id}" data-mid="${m.id}" data-kind="${m.media}"><div class="conv-media-ico">${escape(isMedia(m.text) ? m.text : '📎 Вложение')}</div></div>${caption ? `<div class="conv-text">${escape(caption)}</div>` : ''}`
+                    : media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
                   <div class="conv-time">${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
                 </div>
               </div>`;
@@ -2008,6 +2011,8 @@ const screens = {
           <input type="file" id="attach-input" style="display:none"
                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt">
           <input id="reply-input" type="text" placeholder="Сообщение">
+          <button class="icon-btn rec-btn" data-action="rec-round" data-id="${st.conv_id}" title="Записать кружок">⭕</button>
+          <button class="icon-btn rec-btn" data-action="rec-voice" data-id="${st.conv_id}" title="Записать голосовое">🎤</button>
           <button class="btn primary conv-send" data-action="send-reply" data-id="${st.conv_id}" title="Отправить сообщение"><span data-pix="send" style="display:inline-block;width:18px;height:18px"></span></button>
         </div>
       </div>`;
@@ -3135,6 +3140,7 @@ function render(name, state = {}) {
   $('#screen-root').dataset.screen = name;
   $('#screen-root').innerHTML = screens[name](screenState[name]);
   _hydratePixIcons($('#screen-root'));
+  if (name === 'conv') _hydrateConvMedia($('#screen-root'));
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.screen === name);
   });
@@ -4067,6 +4073,160 @@ function backToInbox() {
 let _convHash = '';
 function _hashConv(msgs) {
   return `${msgs.length}|` + msgs.map(m => `${m.id}:${m.read_at||''}:${m.delivered===false?0:1}`).join(',');
+}
+
+// ===== Вложения в треде: смотреть и слушать прямо в чате (Костя 29.09.2026) =====
+// Файл тянется бэком из Telegram по tg_msg_id и кэшируется там же. Тип «document» у старых
+// сообщений неточный (видео и кружки Telegram шлёт документом) — уточняем через meta.
+const _mediaMetaCache = new Map();
+const _fmtSize = (b) => b == null ? '' : b > 1048576 ? `${(b / 1048576).toFixed(1)} МБ` : `${Math.max(1, Math.round(b / 1024))} КБ`;
+const _fmtDur = (d) => d ? `${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}` : '';
+
+function _mediaHtml(cid, mid, kind, meta) {
+  const src = API.inbox.mediaUrl(cid, mid);
+  const srcDl = API.inbox.mediaUrl(cid, mid, true);
+  switch (kind) {
+    case 'photo':
+    case 'sticker':
+      return `<img class="conv-img" loading="lazy" src="${src}" alt="фото" data-action="media-zoom" data-src="${src}">`;
+    case 'video':
+      return `<video class="conv-video" controls playsinline preload="metadata" src="${src}"></video>`;
+    case 'round':
+      return `<div class="conv-round" data-action="round-toggle"><video playsinline preload="metadata" loop src="${src}"></video><span class="conv-round-play">▶</span></div>`;
+    case 'voice':
+    case 'audio':
+      return `<audio class="conv-audio" controls preload="none" src="${src}"></audio>`;
+    default: {
+      const m = meta || {};
+      return `<div class="conv-doc">
+          <div class="conv-doc-ico">📄</div>
+          <div class="conv-doc-body"><div class="conv-doc-name">${escape(m.name || 'Файл')}</div>
+            <div class="muted small">${[_fmtSize(m.size), _fmtDur(m.duration)].filter(Boolean).join(' · ')}</div></div>
+          <button class="btn sm ghost" data-action="media-open" data-src="${src}">Открыть</button>
+          <button class="btn sm ghost" data-action="media-open" data-src="${srcDl}">⬇</button>
+        </div>`;
+    }
+  }
+}
+
+function _hydrateConvMedia(root) {
+  root.querySelectorAll('.conv-media[data-mid]').forEach(async (box) => {
+    const cid = +box.dataset.cid, mid = +box.dataset.mid;
+    let kind = box.dataset.kind, meta = _mediaMetaCache.get(mid);
+    if ((kind === 'document' || kind === 'media') && !meta) {
+      try { meta = await API.inbox.mediaMeta(cid, mid); _mediaMetaCache.set(mid, meta); }
+      catch (e) { box.innerHTML = `<div class="conv-media-ico">📎 ${escape(cleanErr(e))}</div>`; return; }
+    }
+    if (meta?.kind) kind = meta.kind;
+    box.innerHTML = _mediaHtml(cid, mid, kind, meta);
+    const v = box.querySelector('.conv-round video');
+    if (v) {
+      const ico = box.querySelector('.conv-round-play');
+      v.onplay = () => { if (ico) ico.style.display = 'none'; };
+      v.onpause = () => { if (ico) ico.style.display = ''; };
+    }
+    const failed = (el) => el && (el.onerror = () => { box.innerHTML = '<div class="conv-media-ico">📎 Файл недоступен в Telegram</div>'; });
+    failed(box.querySelector('img')); failed(box.querySelector('video')); failed(box.querySelector('audio'));
+  });
+}
+
+function openMediaViewer(src) {
+  const ov = document.createElement('div');
+  ov.className = 'media-viewer';
+  ov.innerHTML = `<img src="${src}" alt="фото"><button class="media-viewer-x" title="Закрыть">✕</button>`;
+  ov.onclick = () => ov.remove();
+  document.body.appendChild(ov);
+}
+
+// ===== Запись кружка и голосового =====
+// MediaRecorder в браузере → бэк перекодирует (кружок: квадрат 384 H.264, до 60 с;
+// голосовое: ogg/opus) и шлёт как video_note / voice_note. Нет доступа к камере/микрофону
+// (старый WebView Telegram) → системная камера через <input capture>, дальше тот же путь.
+const REC_MAX_S = 60;
+function _pickMime(list) {
+  if (!window.MediaRecorder) return '';
+  return list.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+}
+
+function _recFallback(cid, kind) {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = kind === 'round' ? 'video/*' : 'audio/*';
+  inp.setAttribute('capture', kind === 'round' ? 'user' : '');
+  inp.onchange = () => { const f = inp.files[0]; if (f) _sendRecording(cid, f, kind); };
+  inp.click();
+}
+
+async function _sendRecording(cid, file, kind) {
+  const box = document.getElementById('attach-status');
+  if (box) { box.style.display = 'block'; box.textContent = kind === 'round' ? 'Отправляю кружок…' : 'Отправляю голосовое…'; }
+  try {
+    if (file.size > ATTACH_DIRECT_LIMIT) throw new Error('запись больше 4 МБ, запиши короче');
+    await API.inbox.replyMedia(cid, file, '', kind);
+    if (box) box.style.display = 'none';
+    openConv(cid);
+  } catch (e) {
+    if (box) box.style.display = 'none';
+    toast(`Не отправилось: ${cleanErr(e)}`);
+  }
+}
+
+async function startRecorder(cid, kind) {
+  const round = kind === 'round';
+  let stream;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) throw new Error('no-recorder');
+    stream = await navigator.mediaDevices.getUserMedia(round
+      ? { video: { facingMode: 'user', width: { ideal: 480 }, height: { ideal: 480 } }, audio: true }
+      : { audio: true });
+  } catch {
+    _recFallback(cid, kind);
+    return;
+  }
+  const mime = round
+    ? _pickMime(['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm'])
+    : _pickMime(['audio/webm;codecs=opus', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/webm']);
+  const rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}),
+    videoBitsPerSecond: 400000, audioBitsPerSecond: 48000 });
+  const chunks = [];
+  rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+
+  const ov = document.createElement('div');
+  ov.className = 'rec-overlay';
+  ov.innerHTML = `
+    <div class="rec-stage ${round ? 'round' : 'voice'}">
+      ${round ? '<video class="rec-preview" autoplay muted playsinline></video>' : '<div class="rec-pulse">🎤</div>'}
+    </div>
+    <div class="rec-timer">0:00</div>
+    <div class="rec-actions">
+      <button class="btn ghost" data-rec="cancel">✕ Отмена</button>
+      <button class="btn primary" data-rec="send">Отправить</button>
+    </div>`;
+  document.body.appendChild(ov);
+  if (round) ov.querySelector('.rec-preview').srcObject = stream;
+
+  let cancelled = false, t0 = Date.now();
+  const timer = setInterval(() => {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    ov.querySelector('.rec-timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} / 1:00`;
+    if (s >= REC_MAX_S) stop(false);
+  }, 250);
+  function stop(cancel) {
+    cancelled = cancel;
+    clearInterval(timer);
+    if (rec.state !== 'inactive') rec.stop();
+    stream.getTracks().forEach(t => t.stop());
+    ov.remove();
+  }
+  rec.onstop = () => {
+    if (cancelled || !chunks.length) return;
+    const type = rec.mimeType || mime || (round ? 'video/webm' : 'audio/webm');
+    const ext = type.includes('mp4') ? 'mp4' : type.includes('ogg') ? 'ogg' : 'webm';
+    _sendRecording(cid, new File(chunks, `${kind}.${ext}`, { type }), kind);
+  };
+  ov.querySelector('[data-rec="cancel"]').onclick = () => stop(true);
+  ov.querySelector('[data-rec="send"]').onclick = () => stop(false);
+  rec.start(1000);
 }
 
 // Поллинг открытого диалога: перерисовываем только когда что-то реально поменялось,
@@ -5030,6 +5190,15 @@ async function handleAction(action, el, e) {
       break;
     }
     case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
+    case 'rec-round': startRecorder(parseInt(el.dataset.id, 10), 'round'); break;
+    case 'rec-voice': startRecorder(parseInt(el.dataset.id, 10), 'voice'); break;
+    case 'media-zoom': openMediaViewer(el.dataset.src); break;
+    case 'media-open': {
+      const url = el.dataset.src;
+      if (tg?.openLink) tg.openLink(url); else window.open(url, '_blank', 'noopener');
+      break;
+    }
+    case 'round-toggle': { const v = el.querySelector('video') || el; v.paused ? v.play() : v.pause(); break; }
 
     // Телефоны из Apollo/Clay → аккаунты Telegram → новый список лидов
     case 'phones-lookup': {

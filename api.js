@@ -44,12 +44,17 @@ const API = {
     reply:     (cid, text)    => API.req('POST',   `/api/inbox/conversations/${cid}/reply`, { text }),
     // Исправить уже отправленное: правка уходит и в Telegram, и в базу
     editMessage:(cid, mid, text) => API.req('PATCH', `/api/inbox/conversations/${cid}/messages/${mid}`, { text }),
-    replyMedia:(cid, file, caption='') => {
+    // kind: '' — файл как есть, 'round' — кружок, 'voice' — голосовое (бэк перекодирует)
+    replyMedia:(cid, file, caption='', kind='') => {
       const fd = new FormData();
       fd.append('file', file);
       if (caption) fd.append('caption', caption);
+      if (kind) fd.append('kind', kind);
       return API.req('POST', `/api/inbox/conversations/${cid}/reply_media`, fd);
     },
+    // Вложение сообщения: <img>/<video> не шлют заголовки, поэтому initData в ?init=
+    mediaUrl:(cid, mid, dl=false) => `${API.base()}/api/inbox/conversations/${cid}/messages/${mid}/media?init=${encodeURIComponent(window.Telegram?.WebApp?.initData || '')}${dl ? '&dl=1' : ''}`,
+    mediaMeta:(cid, mid) => API.req('GET', `/api/inbox/conversations/${cid}/messages/${mid}/media/meta`),
     replyAsset:(cid, asset_id, caption='') => API.req('POST', `/api/inbox/conversations/${cid}/reply_asset`, { asset_id, caption }),
     sendJob:   (jobId)        => API.req('GET',    `/api/inbox/send_jobs/${jobId}`),
     suggest:   (cid)          => API.req('POST',   `/api/inbox/conversations/${cid}/suggest_reply`),
