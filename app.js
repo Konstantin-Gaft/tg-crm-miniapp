@@ -1922,7 +1922,7 @@ const screens = {
               <div class="lead-body" style="flex:1;min-width:0">
                 <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
                   <div class="lead-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escape(c.lead_name || c.lead_username || '?')}${snoozed?' 💤':''}</div>
-                  <div class="conv-time">${prettyTime(c.last_message_at)}</div>
+                  <div class="conv-time">${c.account_phone ? `<span class="acc-tail" title="Аккаунт ${escape(c.account_phone)}">📱${escape(String(c.account_phone).replace(/\D/g,'').slice(-4))}</span> ` : ''}${prettyTime(c.last_message_at)}</div>
                 </div>
                 <div class="conv-text" title="${escape(c.last_text||'')}">${_rowTicks(c)}${c.last_direction === 'out' ? 'Ты: ' : ''}${escape((c.last_text || '—').slice(0, 70))}</div>
                 ${tagsHtml || stg || nextHtml ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:4px">${_ibStagePill(stg)}${nextHtml}${tagsHtml}</div>` : ''}
@@ -2521,6 +2521,8 @@ const screens = {
     const chipLabel = (s) => (s || '').replace(/^(.+?) · первое касание · (\d\d)\.(\d\d)\.\d{4}$/, '$1 $2.$3');
     // Заголовок карточки: target_label «Компания · @user» → компания + кликабельный @user
     // (проверить профиль перед отправкой, не выходя из ленты).
+    // Хвост номера аккаунта, с которого идёт диалог: при ручном ответе сразу видно, куда идти
+    const accTag = (a) => a.acc_tail ? ` <span class="acc-tail" title="Аккаунт …${escape(a.acc_tail)}">📱${escape(a.acc_tail)}</span>` : '';
     const who = (a) => {
       const label = a.target_label || a.target_username || a.target_phone || '?';
       const m = label.match(/^(.*?)\s*·\s*@([A-Za-z0-9_]+)\s*$/);
@@ -2558,13 +2560,13 @@ const screens = {
       return `
       <div class="guru-card guru-card-${escape(a.status)}" data-act-id="${a.id}">
         <div class="guru-card-head">
-          <div class="guru-card-title">${isReply ? '📨 ' : ''}${who(a)}</div>
+          <div class="guru-card-title">${isReply ? '📨 ' : ''}${who(a)}${accTag(a)}</div>
           <div class="guru-card-right">${tag}${meta}</div>
         </div>
         ${badges ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:2px 0">${badges}</div>` : ''}
         ${isReply && a.intent ? `<div class="guru-card-intent"><span class="muted small">Входящее:</span> «${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
         ${a.monday_item_id ? `<div class="md-mini">Monday: ${escape(a.company || 'карточка лида')} <button class="md-mini-link" data-action="md-open" data-item="${escape(a.monday_item_id)}" title="Открыть карточку на борде">↗</button></div>` : ''}
-        ${a.asset_id ? `<div class="guru-card-attach">📎 файл #${a.asset_id} уйдёт вместе с текстом</div>` : ''}
+        ${(a.asset_ids || (a.asset_id ? [a.asset_id] : [])).length ? `<div class="guru-card-attach">📎 ${(a.asset_ids || [a.asset_id]).length > 1 ? `${(a.asset_ids || []).length} файла уйдут альбомом` : 'файл уйдёт'} вместе с текстом ${(a.asset_ids || [a.asset_id]).map(x => `<button class="guru-attach-x" data-action="guru-detach" data-id="${a.id}" data-asset="${x}" title="Убрать этот файл">#${x} ✕</button>`).join(' ')}</div>` : ''}
         ${warn ? '<div class="guru-card-warn">⚠ ' + escape(warn.msg) + ': убери до отправки</div>' : ''}
         ${(a.dup || []).length ? `<div class="guru-card-dup">⚠ ${escape(a.dup.join(' · '))}</div>` : ''}
         ${editable && /\{[^{}]*\|[^{}]*\}/.test(text)
@@ -2577,7 +2579,7 @@ const screens = {
         ${a.status === 'pending' ? `
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
-            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="${a.asset_id ? 'Убрать файл' : 'Приложить фото или видео, уйдёт одним сообщением с текстом'}">${a.asset_id ? '📎 убрать' : '📎'}</button>
+            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="Приложить фото, видео или файл (можно несколько), уйдут одним сообщением с текстом">📎${a.asset_id ? '+' : ''}</button>
             ${isReply ? '' : `<button class="btn sm ghost" data-action="guru-menu" data-id="${a.id}"${bb} title="Ещё действия: удалить лида">…</button>`}
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}"${bb} title="Отклонить черновик, не отправлять">Отклонить</button>
             <button class="btn sm primary" data-action="guru-approve" data-id="${a.id}"${bb} title="${isReply ? 'Ответить сразу: мимо очереди, лимит аутрича не тратится. В поле: Ctrl/⌘+Enter' : 'В лист ожидания: уйдёт по лимиту аккаунта. В поле: Ctrl/⌘+Enter'}">${isReply ? '✓ Ответить' : '✓ В очередь'}</button>
@@ -2585,7 +2587,7 @@ const screens = {
         ${a.status === 'queued' ? `
           <div class="guru-actions">
             <span class="guru-save-hint" id="guru-save-${a.id}"></span>
-            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="${a.asset_id ? 'Убрать файл' : 'Приложить фото или видео, уйдёт одним сообщением с текстом'}">${a.asset_id ? '📎 убрать' : '📎'}</button>
+            <button class="btn sm ghost" data-action="guru-attach" data-id="${a.id}" title="Приложить фото, видео или файл (можно несколько), уйдут одним сообщением с текстом">📎${a.asset_id ? '+' : ''}</button>
             <button class="btn sm ghost" data-action="guru-reject" data-id="${a.id}" title="Убрать из очереди и отклонить">Отклонить</button>
             <button class="btn sm" data-action="guru-unqueue" data-id="${a.id}" title="Вернуть в черновики, из очереди убрать">↩ В черновики</button>
           </div>` : ''}
@@ -2752,7 +2754,7 @@ const screens = {
       return `<div class="guru-queue-item ${open ? 'open' : ''}" data-act-id="${it.id}">
         <div class="guru-queue-row">
           <span class="guru-queue-pos">${it.position ? '#' + it.position : '·'}</span>
-          <button class="guru-queue-who" data-action="guru-queue-expand" data-id="${it.id}" title="${open ? 'Скрыть текст' : 'Показать и поправить текст'}"><span class="guru-queue-chev">${open ? '▾' : '▸'}</span> ${escape(it.target_label || '?')}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}${(it.touch_idx || 1) > 1 ? ` <span class="muted small">касание ${it.touch_idx}</span>` : ''}</button>
+          <button class="guru-queue-who" data-action="guru-queue-expand" data-id="${it.id}" title="${open ? 'Скрыть текст' : 'Показать и поправить текст'}"><span class="guru-queue-chev">${open ? '▾' : '▸'}</span> ${escape(it.target_label || '?')}${accTag((a && a.acc_tail) ? a : { acc_tail: (() => { const qa = ((q && q.accounts) || []).find(x => (x.account_id || x.id) === it.account_id); return qa && qa.phone ? String(qa.phone).replace(/\D/g, '').slice(-4) : ''; })() })}${it.conv_id ? ' <span class="muted small">ответ</span>' : ''}${(it.touch_idx || 1) > 1 ? ` <span class="muted small">касание ${it.touch_idx}</span>` : ''}</button>
           <span class="guru-queue-eta">${escape(rowEta(it))}</span>
           <button class="btn ghost guru-queue-btn" data-action="guru-unqueue" data-id="${it.id}" title="Вернуть в черновики">↩</button>
           <button class="btn ghost guru-queue-btn" data-action="guru-reject" data-id="${it.id}" title="Отклонить">✕</button>
@@ -2802,7 +2804,7 @@ const screens = {
       + (queued.length && qPaused ? ' · ⏸ пауза' : queued.length && qRunning ? ' · ▶ идёт' : '');
     return `
     <div class="screen guru-screen guru-view-${view === 'chat' ? 'chat' : 'feed'}">
-      <input type="file" id="guru-attach-input" style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+      <input type="file" id="guru-attach-input" multiple style="display:none" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt">
       <div class="head-row guru-head" id="guru-head">
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
@@ -3416,7 +3418,8 @@ function _hashGuru(h) {
   // silent-рендер выходил по «ничего не изменилось», ник в карточке оставался старым до F5.
   // Цепочка и «протух» тоже в хеше: правка касаний 2–3 и протухание меняют карточку,
   // а без них silent-рендер выходил по «ничего не изменилось» и карточка врала до F5.
-  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}:${x.target_username||''}:${x.queue_pos||''}:${x.eta_label||''}:${(x.chain||[]).length}:${x.stale?1:0}`).join(',');
+  // Файлы тоже: без них «убрать» показывал тост, а скрепка висела до F5 (30.09.2026).
+  const a = (h.actions || []).map(x => `${x.id}:${x.status}:${(x.draft_text||'').length}:${x.target_username||''}:${x.queue_pos||''}:${x.eta_label||''}:${(x.chain||[]).length}:${x.stale?1:0}:${(x.asset_ids||[x.asset_id||'']).join('+')}:${x.acc_tail||''}`).join(',');
   return `${m}|${a}`;
 }
 
@@ -3825,30 +3828,40 @@ async function guruSetUsername(id, current) {
 /** Скрепка в карточке: файл льётся в библиотеку и цепляется к черновику. Уйдёт одним
  *  сообщением, текст черновика станет подписью. Повторный тап отцепляет файл. */
 async function guruAttach(id) {
-  const cur = (screenState.guru?.actions || []).find(x => x.id === id);
   const hint = () => document.getElementById(`guru-save-${id}`);
   const say = (t) => { const h = hint(); if (h) h.textContent = t; };
-  if (cur?.asset_id) {
-    try { await API.guru.setAsset(id, null); toast('Файл убран'); loadGuru(true); }
-    catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
-    return;
-  }
   const input = document.getElementById('guru-attach-input');
   if (!input) return;
   input.onchange = async () => {
-    const f = input.files[0];
+    const files = [...(input.files || [])];
     input.value = '';
-    if (!f) return;
+    if (!files.length) return;
     try {
-      say(`загружаю ${f.name}…`);
-      const asset = await API.assets.upload(f, f.name, null, null, (p) => say(`загружаю ${f.name}… ${p}%`));
-      await API.guru.setAsset(id, asset.id);
-      say('✓ файл приложен');
+      // Каждый файл добавляется к уже приложенным (раньше второй молча заменял первый)
+      for (const [i, f] of files.entries()) {
+        const n = files.length > 1 ? ` (${i + 1}/${files.length})` : '';
+        say(`загружаю ${f.name}${n}…`);
+        const asset = await API.assets.upload(f, f.name, null, null, (p) => say(`загружаю ${f.name}${n}… ${p}%`));
+        await API.guru.setAsset(id, asset.id, { append: true });
+      }
+      say(files.length > 1 ? `✓ приложено ${files.length}` : '✓ файл приложен');
       _guruHash = '';
       loadGuru(true);
-    } catch (e) { say(''); toast(`Не приложилось: ${cleanErr(e)}`); }
+    } catch (e) { say(''); toast(`Не приложилось: ${cleanErr(e)}`); _guruHash = ''; loadGuru(true); }
   };
   input.click();
+}
+/** ✕ у файла: отцепляем именно его. _guruHash сбрасываем, иначе лента не перерисуется
+ *  и файл «висит» после тоста «убран» (баг 30.09.2026). */
+async function guruDetach(id, assetId) {
+  try {
+    const dto = await API.guru.setAsset(id, assetId, { remove: true });
+    const cur = (screenState.guru?.actions || []).find(x => x.id === id);
+    if (cur && dto) { cur.asset_id = dto.asset_id; cur.asset_ids = dto.asset_ids; }
+    toast('Файл убран');
+    _guruHash = '';
+    loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
 }
 async function guruUnqueue(id) {
   try { await API.guru.unqueue(id); toast('↩ Вернул в черновики'); loadGuru(true); }
@@ -5610,6 +5623,7 @@ async function handleAction(action, el, e) {
     case 'guru-supply-toggle': guruSupply(el.dataset.on === '1'); break;
     case 'guru-supply-refill': guruRefillNow(el); break;
     case 'guru-attach':  guruAttach(parseInt(el.dataset.id, 10)); break;
+    case 'guru-detach':  guruDetach(parseInt(el.dataset.id, 10), parseInt(el.dataset.asset, 10)); break;
     case 'guru-unqueue': guruUnqueue(parseInt(el.dataset.id, 10)); break;
     case 'guru-queue-run': guruQueueRun(el); break;
     case 'guru-open-tg': openTgPreview(el.dataset.uname || ''); break;

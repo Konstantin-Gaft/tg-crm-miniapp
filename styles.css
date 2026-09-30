@@ -1347,3 +1347,7 @@ main {
 @keyframes recPulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: .7; } }
 .rec-timer { color: #fff; font-size: 18px; font-variant-numeric: tabular-nums; }
 .rec-actions { display: flex; gap: 12px; }
+
+/* хвост номера аккаунта, с которого идёт диалог */
+.acc-tail { display:inline-block; font-size:11px; font-weight:600; padding:1px 5px; margin-left:4px; border:1px solid var(--ink); border-radius:4px; background:var(--card); color:var(--ink); white-space:nowrap; vertical-align:middle; }
+.guru-attach-x { font:inherit; font-size:12px; padding:1px 6px; margin-left:4px; border:1px solid var(--ink); border-radius:4px; background:var(--card); cursor:pointer; }
