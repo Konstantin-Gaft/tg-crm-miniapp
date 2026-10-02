@@ -3694,7 +3694,10 @@ function guruReject(id) {
   row.innerHTML = '<span class="muted small">Почему:</span>'
     + GURU_REJECT_REASONS.map(([k, label]) =>
         `<button class="btn sm ghost" data-action="guru-reject-do" data-id="${id}" data-reason="${k}">${label}</button>`).join('')
-    + `<button class="btn sm ghost" data-action="guru-reject-do" data-id="${id}" data-reason="" title="Отклонить, причину не указывать">без причины</button>`;
+    + `<button class="btn sm ghost" data-action="guru-reject-do" data-id="${id}" data-reason="" title="Отклонить, причину не указывать">без причины</button>`
+    // «удалить» — не причина отказа, а снос лида целиком (Костя 02.10.2026): карточки Guru, диалог,
+    // карточка борда, чёрный список радаров. Стоит здесь, потому что у карточки ответа меню «…» нет.
+    + `<button class="btn sm ghost" style="color:#b91c1c" data-action="guru-skip" data-id="${id}" title="Удалить лида целиком: карточки в Guru, диалог в Inbox, карточка в Monday; лид уйдёт в чёрный список, радары его больше не принесут. 10 секунд можно отменить">удалить</button>`;
   (card.querySelector('.guru-actions') || card).insertAdjacentElement('afterend', row);
 }
 /** «Плохой текст» на бэкенде уходит на перегенерацию тем же лидом, остальные причины — просто отказ. */
@@ -3719,8 +3722,9 @@ function guruMenu(id) {
   (card.querySelector('.guru-actions') || card).insertAdjacentElement('afterend', row);
 }
 
-/** «Уже писал ему с другого аккаунта»: карточка закрывается, лид помечается do_not_contact,
- *  чтобы радар и дедуп больше не приносили его в списки. 10 секунд на отмену. */
+/** Удалить лида (меню «…» и «удалить» в причинах отказа): карточки закрываются, лид помечается
+ *  do_not_contact и уходит в чёрный список, чтобы радар и дедуп больше не приносили его в списки;
+ *  после окна отмены уходят карточка борда и диалог. 10 секунд на отмену. */
 async function guruSkip(id) {
   try {
     await API.guru.alreadyContacted(id);
