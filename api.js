@@ -44,6 +44,7 @@ const API = {
     reply:     (cid, text)    => API.req('POST',   `/api/inbox/conversations/${cid}/reply`, { text }),
     // Исправить уже отправленное: правка уходит и в Telegram, и в базу
     editMessage:(cid, mid, text) => API.req('PATCH', `/api/inbox/conversations/${cid}/messages/${mid}`, { text }),
+    deleteMessage:(cid, mid) => API.req('DELETE', `/api/inbox/conversations/${cid}/messages/${mid}`),
     // kind: '' — файл как есть, 'round' — кружок, 'voice' — голосовое (бэк перекодирует)
     replyMedia:(cid, file, caption='', kind='') => {
       const fd = new FormData();

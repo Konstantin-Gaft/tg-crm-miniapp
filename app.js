@@ -1992,7 +1992,7 @@ const screens = {
                 <div class="conv-bubble ${out ? 'out' : 'in'} ${media ? 'media' : ''}">
                   ${m.media && m.media !== 'geo' ? `<div class="conv-media" data-cid="${st.conv_id}" data-mid="${m.id}" data-kind="${m.media}"><div class="conv-media-ico">${escape(isMedia(m.text) ? m.text : '📎 Вложение')}</div></div>${caption ? `<div class="conv-text">${escape(caption)}</div>` : ''}`
                     : media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
-                  <div class="conv-time">${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
+                  <div class="conv-time">${out ? `<button class="msg-edit" data-action="msg-delete" data-id="${m.id}" data-cid="${st.conv_id}" title="Удалить сообщение у себя и у лида">✕</button>` : ''}${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
                 </div>
               </div>`;
           }).join('')}
@@ -3604,6 +3604,7 @@ async function guruApprove(id) {
 // Выбранный файл ждёт отправки вместе с текстом: скрепка больше не шлёт его сразу,
 // иначе подпись приходилось набирать заранее и файл улетал без неё.
 let _pendingAttach = null;
+let _replySending = false;   // идёт отправка ответа: второй клик не шлёт дубль
 function _renderAttachChip() {
   const box = document.getElementById('attach-chip');
   if (!box) return;
@@ -5189,8 +5190,17 @@ async function handleAction(action, el, e) {
         break;
       }
       if (!text) return;
+      // Второй клик/Enter, пока первый запрос в пути, слал то же сообщение дважды (02.10.2026)
+      if (_replySending) return;
+      _replySending = true;
+      if (inp) inp.value = '';
       try { await API.inbox.reply(cid, text); openConv(cid); }
-      catch (e) { toast(`Ошибка: ${e.message}`); }
+      catch (e) {
+        const cur = document.getElementById('reply-input');
+        if (cur && !cur.value) cur.value = text;      // не ушло — текст возвращаем в поле
+        toast(`Ошибка: ${e.message}`);
+      }
+      finally { _replySending = false; }
       break;
     }
     case 'attach-file': {
@@ -5285,6 +5295,16 @@ async function handleAction(action, el, e) {
       const text = next.trim();
       if (!text || text === cur.trim()) return;
       try { await API.inbox.editMessage(cid, mid, text); toast('Исправлено'); openConv(cid); }
+      catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+    // Удалить своё сообщение: пропадает и у лида (в личке Telegram окна по времени нет)
+    case 'msg-delete': {
+      const mid = parseInt(el.dataset.id, 10);
+      const cid = parseInt(el.dataset.cid, 10);
+      const yes = await confirm_('Удалить сообщение у себя и у лида?');
+      if (!yes) return;
+      try { await API.inbox.deleteMessage(cid, mid); toast('Удалено'); openConv(cid); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
