@@ -168,6 +168,10 @@ const API = {
     run: () => API.req('POST', '/api/briefing/run'),
   },
 
+  stats: {
+    get: (q) => API.req('GET', '/api/stats?' + new URLSearchParams(q).toString()),
+  },
+
   dashboard: {
     get:    () => API.req('GET', '/api/dashboard'),
     badges: () => API.req('GET', '/api/dashboard/badges'),

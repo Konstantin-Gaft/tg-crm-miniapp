@@ -955,7 +955,7 @@ const screens = {
         </div>` : '';
     // Ждут тебя: ход за Костей. Axiome написал «предложу ребятам» и ждал девять дней —
     // сигнала не было ни на одном экране, потому что unread снимается первым же заходом.
-    const wfyBlock = waitingBlock(d.waiting_for_you);
+    const wfyBlock = '';   // «Ждут тебя» снят с главной (Костя 06.10.2026): ждущие лиды живут в Inbox
     return `
       <div class="screen">
         <div class="card" style="background:var(--ink);color:var(--card);border-color:var(--ink);display:flex;align-items:center;gap:14px">
@@ -3074,6 +3074,60 @@ const screens = {
   },
 
   // ---------- MORE ----------
+
+  // Статистика аутрича: аккаунт (все/один) × период (1 день … 1 год). Костя 06.10.2026.
+  stats: (st) => {
+    const d = st?.data; const q = st?.q || {};
+    const presets = [['1','1 день'],['7','7 дней'],['30','30 дней'],['90','90 дней'],['365','год']];
+    const ctl = `
+      <div class="card" style="display:flex;flex-direction:column;gap:8px">
+        <select data-action="stats-acc" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-size:14px">
+          <option value="all" ${!q.account_id||q.account_id==='all'?'selected':''}>Все аккаунты</option>
+          ${(d?.accounts||[]).map(a=>`<option value="${a.id}" ${String(q.account_id)===String(a.id)?'selected':''}>${escape(a.name)}</option>`).join('')}
+        </select>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${presets.map(([v,l])=>`<button class="btn ${q.preset===v?'primary':''}" style="padding:6px 10px;font-size:13px" data-action="stats-preset" data-days="${v}">${l}</button>`).join('')}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;font-size:13px">
+          <input type="date" id="stats-from" value="${escape(q.from||'')}" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+          <span>→</span>
+          <input type="date" id="stats-to" value="${escape(q.to||'')}" style="flex:1;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)">
+          <button class="btn" style="padding:8px 10px" data-action="stats-range">Ок</button>
+        </div>
+      </div>`;
+    if (!d) return `<div class="screen"><div class="head-row"><h2>Статистика</h2></div>${ctl}<div class="empty"><div class="empty-title">Загружаю…</div></div></div>`;
+    const kpi = (v, l, sub='') => `<div class="card" style="flex:1 1 44%;min-width:120px;padding:10px 12px"><div style="font-family:var(--font-h);font-weight:700;font-size:22px">${v ?? '—'}</div><div style="font-size:12px;color:var(--text-muted)">${l}${sub?`<br>${sub}`:''}</div></div>`;
+    const w = d.warmup || {}, rt = d.reply_time_h || {};
+    const rows = (obj, total) => Object.entries(obj||{}).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${escape(k)}</span><b>${v}${total?` <span class="muted">(${Math.round(v/total*100)}%)</span>`:''}</b></div>`).join('') || '<div class="muted small">пусто</div>';
+    const fmtD = x => x==null?'—':x;
+    return `
+      <div class="screen">
+        <div class="head-row"><h2>Статистика</h2></div>
+        ${ctl}
+        <div class="muted small" style="margin:6px 2px">${escape(d.from)} → ${escape(d.to)} · лид считается по дате первого касания</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${kpi(d.leads,'лидов начато')}
+          ${kpi(d.touches,'касаний ушло', d.touches_per_lead!=null?`${d.touches_per_lead} на лида`:'')}
+          ${kpi(d.replied,'ответили')}
+          ${kpi(`${d.reply_rate}%`,'reply rate')}
+        </div>
+        <div class="section-title">Прогрев до ответа</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          ${kpi(fmtD(w.touches_median),'касаний до ответа', w.touches_avg!=null?`в среднем ${w.touches_avg} · медиана`:'')}
+          ${kpi(fmtD(w.days_median),'дней до ответа', w.days_avg!=null?`в среднем ${w.days_avg} · медиана`:'')}
+          ${kpi(fmtD(rt.median),'ч от касания до ответа', rt.avg!=null?`в среднем ${rt.avg} · медиана`:'')}
+        </div>
+        <div class="card">${rows({'ответил сразу (0 касаний)':w.hist?.['0']||0,'после 1 фоллоу-апа':w.hist?.['1']||0,'после 2':w.hist?.['2']||0,'после 3 и больше':w.hist?.['3+']||0}, d.replied)}</div>
+        <div class="section-title">Статусы лидов в Monday</div>
+        <div class="card">${rows(d.stages, d.leads)}</div>
+        ${Object.keys(d.tags||{}).length?`<div class="section-title">О чём отвечали</div><div class="card">${rows(d.tags)}</div>`:''}
+        <div class="section-title">Отсев</div>
+        <div class="card">${rows({'платные ЛС (снято при отправке)':d.paid_dm,'не ушло (ошибка)':d.failed,'отклонено черновиков':d.rejected})}</div>
+        ${(d.per_account||[]).length>1?`<div class="section-title">По аккаунтам</div><div class="card">${d.per_account.map(a=>`<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${escape(a.account)}</span><span>${a.leads} лид · ${a.touches} кас · <b>${a.reply_rate}%</b></span></div>`).join('')}</div>`:''}
+        <div class="section-title">По дням</div>
+        <div class="card">${(d.by_day||[]).slice(-31).reverse().map(x=>`<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:12px"><span>${x.day}</span><span>${x.leads} лид · ${x.touches} кас · ${x.replies} отв</span></div>`).join('')||'<div class="muted small">пусто</div>'}</div>
+      </div>`;
+  },
   more: () => `
     <div class="screen">
       <div class="head-row"><h2>Ещё</h2></div>
@@ -3087,6 +3141,10 @@ const screens = {
         <div class="list-ico pix-gold" data-pix="vip"></div>
         <div class="list-text"><div class="list-title">Тарифы</div><div class="list-sub">BUSHI · RONIN · SENSEI</div></div>
         <div class="list-arrow">›</div>
+      </div>
+      <div class="section-title">Аутрич</div>
+      <div class="list-item" data-action="goto-stats">
+        <div class="list-ico pix-gold" data-pix="analytics"></div><div class="list-text"><div class="list-title">Статистика</div><div class="list-sub">Аккаунты · период · reply rate · прогрев</div></div><div class="list-arrow">›</div>
       </div>
       <div class="section-title">Мозг Guru</div>
       <div class="list-item" data-action="goto-brain">
@@ -4592,6 +4650,24 @@ async function loadAssets(silent=false) {
   }
 }
 
+
+// ===== Статистика =====
+let _statsQ = { account_id: 'all', preset: '30' };
+function _statsRange(days) {
+  const to = new Date(); const from = new Date(to.getTime() - (days - 1) * 86400000);
+  const f = x => x.toISOString().slice(0, 10);
+  return { from: f(from), to: f(to) };
+}
+async function loadStats(patch = {}) {
+  _statsQ = { ..._statsQ, ...patch };
+  if (_statsQ.preset) Object.assign(_statsQ, _statsRange(parseInt(_statsQ.preset, 10)));
+  render('stats', { q: _statsQ, data: null });
+  try {
+    const data = await API.stats.get({ from: _statsQ.from, to: _statsQ.to, account_id: _statsQ.account_id || 'all' });
+    render('stats', { q: _statsQ, data });
+  } catch (e) { $('#screen-root').innerHTML = errorScreen('Статистика', e.message, 'goto-stats'); }
+}
+
 async function loadProfile() {
   try { render('profile', { profile: await API.profile.get() }); }
   catch (e) { render('profile', { profile: {} }); toast(`Ошибка: ${e.message}`); }
@@ -5603,6 +5679,10 @@ async function handleAction(action, el, e) {
     case 'goto-analytics': loadAnalytics(); break;
     case 'goto-stoplist':  loadStoplist(); break;
     case 'goto-profile':   loadProfile(); break;
+    case 'goto-stats':     loadStats(); break;
+    case 'stats-acc':      loadStats({ account_id: el.value }); break;
+    case 'stats-preset':   loadStats({ preset: el.dataset.days }); break;
+    case 'stats-range':    loadStats({ preset: null, from: $('#stats-from').value, to: $('#stats-to').value }); break;
     case 'goto-pricing':   loadPricing(); break;
     case 'retry-dashboard': loadDashboard(); break;
     case 'ai-copy': copyText(screenState.ai_composer?._lastText || ''); break;
