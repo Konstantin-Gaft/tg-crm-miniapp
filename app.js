@@ -2522,7 +2522,10 @@ const screens = {
     // Заголовок карточки: target_label «Компания · @user» → компания + кликабельный @user
     // (проверить профиль перед отправкой, не выходя из ленты).
     // Хвост номера аккаунта, с которого идёт диалог: при ручном ответе сразу видно, куда идти
-    const accTag = (a) => a.acc_tail ? ` <span class="acc-tail" title="Аккаунт …${escape(a.acc_tail)}">📱${escape(a.acc_tail)}</span>` : '';
+    // чип аккаунта у карточки-ответа открывает переписку с лидом в Inbox — вникнуть в контекст до апрува
+    const accTag = (a) => !a.acc_tail ? '' : a.conv_id
+      ? ` <span class="acc-tail acc-tail-link" data-action="open-conv" data-id="${a.conv_id}" data-name="${escape(a.target_label || '')}" data-uname="${escape(a.target_username || '')}" title="Открыть переписку · аккаунт …${escape(a.acc_tail)}">📱${escape(a.acc_tail)}</span>`
+      : ` <span class="acc-tail" title="Аккаунт …${escape(a.acc_tail)}">📱${escape(a.acc_tail)}</span>`;
     const who = (a) => {
       const label = a.target_label || a.target_username || a.target_phone || '?';
       const m = label.match(/^(.*?)\s*·\s*@([A-Za-z0-9_]+)\s*$/);
