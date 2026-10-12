@@ -2008,7 +2008,7 @@ const screens = {
         <div id="attach-chip" class="attach-chip" style="display:none"></div>
         <div class="conv-input">
           <button class="icon-btn" data-action="attach-file" data-id="${st.conv_id}" title="Прикрепить файл" data-pix="plus"></button>
-          <input type="file" id="attach-input" style="display:none"
+          <input type="file" id="attach-input" style="display:none" multiple
                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt">
           <input id="reply-input" type="text" placeholder="Сообщение">
           <button class="icon-btn rec-btn" data-action="rec-round" data-id="${st.conv_id}" title="Записать кружок">⭕</button>
@@ -3664,17 +3664,25 @@ async function guruApprove(id) {
 // и «Файлы Guru»), потом бэк отправляет его в Telegram фоном, а мы следим по job_id.
 // Выбранный файл ждёт отправки вместе с текстом: скрепка больше не шлёт его сразу,
 // иначе подпись приходилось набирать заранее и файл улетал без неё.
-let _pendingAttach = null;
+// Костя 12.10.2026: «не могу прикрепить сразу 2 видео + текст» — файлов теперь сколько угодно,
+// уходят по очереди, текст подписью к первому.
+let _pendingAttach = [];
 let _replySending = false;   // идёт отправка ответа: второй клик не шлёт дубль
 function _renderAttachChip() {
   const box = document.getElementById('attach-chip');
   if (!box) return;
-  if (!_pendingAttach) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  if (!_pendingAttach.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
   box.style.display = 'flex';
-  box.innerHTML = `<span class="attach-chip-name">📎 ${escape(_pendingAttach.name)}</span>`
-    + `<span class="muted small">${(_pendingAttach.size / 1024 / 1024).toFixed(1)} МБ</span>`
-    + '<button class="btn ghost" data-action="attach-clear" title="Убрать файл">✕</button>';
+  box.style.flexDirection = 'column';
+  box.innerHTML = _pendingAttach.map((f, i) => '<div style="display:flex;gap:8px;align-items:center;width:100%">'
+    + `<span class="attach-chip-name">📎 ${escape(f.name)}</span>`
+    + `<span class="muted small">${(f.size / 1024 / 1024).toFixed(1)} МБ</span>`
+    + `<button class="btn ghost" data-action="attach-clear" data-idx="${i}" title="Убрать файл">✕</button></div>`).join('');
 }
+
+// Тред после отправки обновляем как поллинг, а не открываем заново: openConv перерисовывал экран
+// с пустым полем, и текст, набранный пока заливалось видео, пропадал (Костя 12.10.2026).
+function _refreshConv(cid) { _convHash = ''; return pollConv(cid); }
 
 const ATTACH_DIRECT_LIMIT = 4 * 1024 * 1024;
 const ASSET_EXT = /\.(mp4|mov|webm|mkv|avi|jpg|jpeg|png|webp|gif|pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i;
@@ -3690,7 +3698,7 @@ async function sendAttachment(cid, f, caption) {
     say(`Отправляю ${f.name}…`);
     try {
       await API.inbox.replyMedia(cid, f, caption);
-      hide(); openConv(cid);
+      hide(); _refreshConv(cid);
     } catch (e) { hide(); toast(`Не отправилось: ${cleanErr(e)}`); }
     return;
   }
@@ -3711,9 +3719,9 @@ async function sendAttachment(cid, f, caption) {
     const job = await API.inbox.replyAsset(cid, assetId, caption);
     const res = await waitForSendJob(job.job_id);
     hide();
-    if (res === 'sent')        { toast('✓ Отправлено'); openConv(cid); }
+    if (res === 'sent')        { toast('✓ Отправлено'); _refreshConv(cid); }
     else if (res === 'failed') { toast(`Не отправилось: ${lastJobError || 'ошибка'}`); }
-    else                       { toast('Отправка идёт — тред обновится сам'); openConv(cid); }
+    else                       { toast('Отправка идёт — тред обновится сам'); _refreshConv(cid); }
   } catch (e) {
     hide();
     toast(`Не отправилось: ${cleanErr(e)}`);
@@ -4144,7 +4152,7 @@ async function loadInbox(silent=false) {
 
 // Уход из диалога обратно в список: свой поллинг диалога гасим, инбоксовый возвращаем
 function backToInbox() {
-  _pendingAttach = null;          // выбранный, но не отправленный файл не тащим в другой диалог
+  _pendingAttach = [];            // выбранный, но не отправленный файл не тащим в другой диалог
   loadInbox();
   startPoll(() => { loadInbox(true); refreshBadges(); }, 15000);
 }
@@ -4327,6 +4335,7 @@ async function pollConv(cid) {
   const caret = focused ? inpOld.selectionStart : null;
   render('conv', { ...screenState.conv, messages });
   _mdRender(_mdCard);        // перерисовка затирает полоску Monday — возвращаем без запроса
+  _renderAttachChip();       // и выбранные, но ещё не отправленные файлы
   const ml2 = document.getElementById('msg-list');
   if (ml2) ml2.scrollTop = atBottom ? ml2.scrollHeight : keepTop;
   const inp = document.getElementById('reply-input');
@@ -4472,7 +4481,7 @@ async function loadMondayCard(username, company, convId) {
 // meta — подпись диалога, когда его открывают не из инбокса (блок «ждут тебя» на главной):
 // список переписок там ещё не загружен, и без этого в шапке стоял бы «Чат #12».
 async function openConv(cid, meta = null) {
-  _pendingAttach = null;
+  _pendingAttach = [];
   _mdCard = null;
   try {
     const messages = await API.inbox.messages(cid);
@@ -5261,11 +5270,12 @@ async function handleAction(action, el, e) {
       const text = (inp?.value || '').trim();
       const cid = parseInt(el.dataset.id, 10);
       // Файл уходит вместе с набранным текстом (как в Telegram), а не отдельным сообщением
-      if (_pendingAttach) {
-        const f = _pendingAttach;
-        _pendingAttach = null; _renderAttachChip();
+      if (_pendingAttach.length) {
+        const files = _pendingAttach;
+        _pendingAttach = []; _renderAttachChip();
         if (inp) inp.value = '';
-        await sendAttachment(cid, f, text);
+        // по очереди: второй файл не стартует, пока первый не ушёл, подпись только у первого
+        for (let i = 0; i < files.length; i++) await sendAttachment(cid, files[i], i === 0 ? text : '');
         break;
       }
       if (!text) return;
@@ -5273,7 +5283,7 @@ async function handleAction(action, el, e) {
       if (_replySending) return;
       _replySending = true;
       if (inp) inp.value = '';
-      try { await API.inbox.reply(cid, text); openConv(cid); }
+      try { await API.inbox.reply(cid, text); _refreshConv(cid); }
       catch (e) {
         const cur = document.getElementById('reply-input');
         if (cur && !cur.value) cur.value = text;      // не ушло — текст возвращаем в поле
@@ -5285,17 +5295,17 @@ async function handleAction(action, el, e) {
     case 'attach-file': {
       const input = document.getElementById('attach-input');
       input.onchange = () => {
-        const f = input.files[0];
+        const picked = Array.from(input.files || []);
         input.value = '';                       // иначе повторный выбор того же файла не даст change
-        if (!f) return;
-        _pendingAttach = f;                     // ждёт кнопки «отправить» вместе с подписью
+        if (!picked.length) return;
+        _pendingAttach = _pendingAttach.concat(picked);   // ждут кнопки «отправить» вместе с подписью
         _renderAttachChip();
         document.getElementById('reply-input')?.focus();
       };
       input.click();
       break;
     }
-    case 'attach-clear': _pendingAttach = null; _renderAttachChip(); break;
+    case 'attach-clear': _pendingAttach.splice(parseInt(el.dataset.idx, 10) || 0, 1); _renderAttachChip(); break;
     case 'rec-round': startRecorder(parseInt(el.dataset.id, 10), 'round'); break;
     case 'rec-voice': startRecorder(parseInt(el.dataset.id, 10), 'voice'); break;
     case 'media-zoom': openMediaViewer(el.dataset.src); break;
