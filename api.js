@@ -41,7 +41,10 @@ const API = {
     // folderId необязателен: без него — весь инбокс (как раньше), с ним — серверная фильтрация по папке
     list:      (folderId)     => API.req('GET',    `/api/inbox/conversations${folderId ? `?folder_id=${folderId}` : ''}`),
     messages:  (cid)          => API.req('GET',    `/api/inbox/conversations/${cid}/messages`),
-    reply:     (cid, text)    => API.req('POST',   `/api/inbox/conversations/${cid}/reply`, { text }),
+    // replyTo — id сообщения треда: ответ уйдёт цитатой, как в Telegram
+    reply:     (cid, text, replyTo) => API.req('POST', `/api/inbox/conversations/${cid}/reply`, { text, reply_to: replyTo || null }),
+    // emoji '' — снять реакцию
+    react:     (cid, mid, emoji) => API.req('POST', `/api/inbox/conversations/${cid}/messages/${mid}/react`, { emoji }),
     // Исправить уже отправленное: правка уходит и в Telegram, и в базу
     editMessage:(cid, mid, text) => API.req('PATCH', `/api/inbox/conversations/${cid}/messages/${mid}`, { text }),
     deleteMessage:(cid, mid) => API.req('DELETE', `/api/inbox/conversations/${cid}/messages/${mid}`),

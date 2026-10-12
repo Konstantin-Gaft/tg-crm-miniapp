@@ -1988,11 +1988,12 @@ const screens = {
             const age = Date.now() - (parseUTC(m.sent_at)?.getTime() || 0);
             const canEdit = out && !media && age < 48 * 3600 * 1000;
             return (showDate ? `<div class="conv-date">${day}</div>` : '') + `
-              <div class="conv-row ${out ? 'out' : 'in'}">
+              <div class="conv-row ${out ? 'out' : 'in'}" id="m-${m.id}">
                 <div class="conv-bubble ${out ? 'out' : 'in'} ${media ? 'media' : ''}">
+                  ${m.reply_to ? `<div class="conv-quote" data-action="msg-goto" data-id="${m.reply_to}"><b>${m.reply_out ? 'Вы' : escape(title)}</b>${escape(m.reply_text || '')}</div>` : ''}
                   ${m.media && m.media !== 'geo' ? `<div class="conv-media" data-cid="${st.conv_id}" data-mid="${m.id}" data-kind="${m.media}"><div class="conv-media-ico">${escape(isMedia(m.text) ? m.text : '📎 Вложение')}</div></div>${caption ? `<div class="conv-text">${escape(caption)}</div>` : ''}`
                     : media ? `<div class="conv-media-ico">${escape(m.text)}</div>` : `<div class="conv-text">${escape(m.text)}</div>`}
-                  <div class="conv-time">${out ? `<button class="msg-edit" data-action="msg-delete" data-id="${m.id}" data-cid="${st.conv_id}" title="Удалить сообщение у себя и у лида">✕</button>` : ''}${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
+                  <div class="conv-time">${m.reaction ? `<button class="msg-reaction" data-action="msg-react" data-id="${m.id}" data-cid="${st.conv_id}" title="Ваша реакция. Клик: сменить или снять">${escape(m.reaction)}</button>` : ''}${m.delivered !== false ? `<button class="msg-edit" data-action="msg-reply" data-id="${m.id}" title="Ответить на это сообщение">↩</button><button class="msg-edit" data-action="msg-react" data-id="${m.id}" data-cid="${st.conv_id}" title="Реакция">☺</button>` : ''}${out ? `<button class="msg-edit" data-action="msg-delete" data-id="${m.id}" data-cid="${st.conv_id}" title="Удалить сообщение у себя и у лида">✕</button>` : ''}${canEdit ? `<button class="msg-edit" data-action="msg-edit" data-id="${m.id}" data-cid="${st.conv_id}" title="Исправить сообщение">✎</button>` : ''}${m.edited_at ? '<span class="conv-edited" title="Исправлено после отправки">изм.</span>' : ''}${fmtTime(m.sent_at)}${out ? ` ${_msgTicks(m)}` : ''}</div>
                 </div>
               </div>`;
           }).join('')}
@@ -2006,6 +2007,7 @@ const screens = {
         ` : ''}
         <div id="attach-status" class="muted small" style="display:none;padding:6px 10px;border-top:1px solid var(--border);background:var(--bg)"></div>
         <div id="attach-chip" class="attach-chip" style="display:none"></div>
+        <div id="reply-bar" class="reply-bar" style="display:none"></div>
         <div class="conv-input">
           <button class="icon-btn" data-action="attach-file" data-id="${st.conv_id}" title="Прикрепить файл" data-pix="plus"></button>
           <input type="file" id="attach-input" style="display:none" multiple
@@ -3680,6 +3682,18 @@ function _renderAttachChip() {
     + `<button class="btn ghost" data-action="attach-clear" data-idx="${i}" title="Убрать файл">✕</button></div>`).join('');
 }
 
+// Ответ на конкретное сообщение (цитата, как в Telegram): {cid, id, who, text} или null
+let _replyTo = null;
+const REACTIONS = ['👍', '❤', '🔥', '🙏', '👏', '😁', '🤝', '👌', '💯', '🤔'];
+function _renderReplyBar() {
+  const box = document.getElementById('reply-bar');
+  if (!box) return;
+  if (!_replyTo || _replyTo.cid !== screenState.conv?.conv_id) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.style.display = 'flex';
+  box.innerHTML = `<div class="reply-bar-text"><b>↩ ${escape(_replyTo.who)}</b>${escape(_replyTo.text)}</div>`
+    + '<button class="btn ghost" data-action="msg-reply-cancel" title="Не отвечать на сообщение">✕</button>';
+}
+
 // Тред после отправки обновляем как поллинг, а не открываем заново: openConv перерисовывал экран
 // с пустым полем, и текст, набранный пока заливалось видео, пропадал (Костя 12.10.2026).
 function _refreshConv(cid) { _convHash = ''; return pollConv(cid); }
@@ -4159,7 +4173,7 @@ function backToInbox() {
 
 let _convHash = '';
 function _hashConv(msgs) {
-  return `${msgs.length}|` + msgs.map(m => `${m.id}:${m.read_at||''}:${m.delivered===false?0:1}`).join(',');
+  return `${msgs.length}|` + msgs.map(m => `${m.id}:${m.read_at||''}:${m.delivered===false?0:1}:${m.reaction||''}`).join(',');
 }
 
 // ===== Вложения в треде: смотреть и слушать прямо в чате (Костя 29.09.2026) =====
@@ -4336,6 +4350,7 @@ async function pollConv(cid) {
   render('conv', { ...screenState.conv, messages });
   _mdRender(_mdCard);        // перерисовка затирает полоску Monday — возвращаем без запроса
   _renderAttachChip();       // и выбранные, но ещё не отправленные файлы
+  _renderReplyBar();         // и сообщение, на которое пишется ответ
   const ml2 = document.getElementById('msg-list');
   if (ml2) ml2.scrollTop = atBottom ? ml2.scrollHeight : keepTop;
   const inp = document.getElementById('reply-input');
@@ -4482,6 +4497,7 @@ async function loadMondayCard(username, company, convId) {
 // список переписок там ещё не загружен, и без этого в шапке стоял бы «Чат #12».
 async function openConv(cid, meta = null) {
   _pendingAttach = [];
+  if (_replyTo && _replyTo.cid !== cid) _replyTo = null;
   _mdCard = null;
   try {
     const messages = await API.inbox.messages(cid);
@@ -5283,8 +5299,11 @@ async function handleAction(action, el, e) {
       if (_replySending) return;
       _replySending = true;
       if (inp) inp.value = '';
-      try { await API.inbox.reply(cid, text); _refreshConv(cid); }
+      const quote = _replyTo && _replyTo.cid === cid ? _replyTo : null;
+      _replyTo = null; _renderReplyBar();
+      try { await API.inbox.reply(cid, text, quote?.id); _refreshConv(cid); }
       catch (e) {
+        if (quote && !_replyTo) { _replyTo = quote; _renderReplyBar(); }   // не ушло — цитату возвращаем
         const cur = document.getElementById('reply-input');
         if (cur && !cur.value) cur.value = text;      // не ушло — текст возвращаем в поле
         toast(`Ошибка: ${e.message}`);
@@ -5384,6 +5403,49 @@ async function handleAction(action, el, e) {
       const text = next.trim();
       if (!text || text === cur.trim()) return;
       try { await API.inbox.editMessage(cid, mid, text); toast('Исправлено'); openConv(cid); }
+      catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+    // Ответить на конкретное сообщение, своё или лида: цитата над полем ввода, как в Telegram
+    case 'msg-reply': {
+      const mid = parseInt(el.dataset.id, 10);
+      const m = (screenState.conv?.messages || []).find(x => x.id === mid);
+      if (!m) return;
+      _replyTo = { cid: screenState.conv.conv_id, id: mid,
+                   who: m.direction === 'out' ? 'Вы' : (screenState.conv.title || 'Лид'),
+                   text: (m.text || '').slice(0, 140) };
+      _renderReplyBar();
+      document.getElementById('reply-input')?.focus();
+      break;
+    }
+    case 'msg-reply-cancel': _replyTo = null; _renderReplyBar(); break;
+    case 'msg-goto': {
+      const row = document.getElementById(`m-${el.dataset.id}`);
+      if (!row) return;
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.add('flash'); setTimeout(() => row.classList.remove('flash'), 1200);
+      break;
+    }
+    // Реакция на сообщение: строка эмодзи под пузырём, повторный клик по своей реакции снимает её
+    case 'msg-react': {
+      const old = document.getElementById('react-picker');
+      const same = old?.dataset.id === el.dataset.id;
+      old?.remove();
+      if (same) return;
+      const mid = parseInt(el.dataset.id, 10);
+      const cur = (screenState.conv?.messages || []).find(x => x.id === mid)?.reaction || '';
+      const box = document.createElement('div');
+      box.id = 'react-picker'; box.className = 'react-picker'; box.dataset.id = el.dataset.id;
+      box.innerHTML = REACTIONS.map(e => `<button data-action="msg-react-set" data-id="${mid}" data-cid="${el.dataset.cid}" data-emoji="${e}" class="${e === cur ? 'on' : ''}">${e}</button>`).join('');
+      el.closest('.conv-bubble')?.appendChild(box);
+      break;
+    }
+    case 'msg-react-set': {
+      const mid = parseInt(el.dataset.id, 10);
+      const cid = parseInt(el.dataset.cid, 10);
+      const emoji = el.classList.contains('on') ? '' : el.dataset.emoji;
+      document.getElementById('react-picker')?.remove();
+      try { await API.inbox.react(cid, mid, emoji); _refreshConv(cid); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
       break;
     }
