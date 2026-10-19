@@ -18,8 +18,20 @@ const API = {
     if (!r.ok) {
       let detail = '';
       try { detail = (await r.json()).detail || ''; } catch {}
+      // initData Telegram выдаёт один раз при запуске: протухла — перезагружаемся за свежей.
+      // Флаг в sessionStorage не даёт уйти в цикл перезагрузок, если не помогло.
+      if (r.status === 401 && detail === 'initData expired') {
+        let reloaded = false;
+        try { reloaded = sessionStorage.getItem('initdata_reload') === '1'; } catch {}
+        if (!reloaded) {
+          try { sessionStorage.setItem('initdata_reload', '1'); } catch {}
+          location.reload();
+          return new Promise(() => {});
+        }
+      }
       throw new Error(`${r.status} ${detail || r.statusText}`);
     }
+    try { sessionStorage.removeItem('initdata_reload'); } catch {}
     if (r.status === 204) return null;
     return r.json();
   },
