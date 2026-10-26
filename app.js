@@ -394,16 +394,17 @@ function startPoll(fn, ms) { stopPoll(); _poll = setInterval(fn, ms); }
 
 // ===== Schedule editor =====
 const DAY_LABELS = ['Понедельник','Вторник','Среда','Четверг','Пятница','Суббота','Воскресенье'];
-const DEFAULT_SCHEDULE = { enabled: false, days: [true,true,true,true,true,false,false], time_from: '09:00', time_to: '18:00', timezone: 'UTC', touch_delays: [1,3,5,7] };
+const DEFAULT_SCHEDULE = { enabled: false, days: [true,true,true,true,true,false,false], time_from: '12:00', time_to: '18:00', timezone: 'UTC', touch_delays: [3] };
 const TIMEZONES = ['UTC','Europe/Moscow','Europe/Kyiv','Europe/London','Europe/Berlin','Europe/Lisbon','Asia/Dubai','Asia/Bangkok','Asia/Tokyo','America/New_York','America/Los_Angeles'];
 function scheduleEditorHTML(sch) {
   const s = sch || DEFAULT_SCHEDULE;
   const days = (s.days && s.days.length === 7) ? s.days : DEFAULT_SCHEDULE.days;
-  const tf = s.time_from || '09:00';
-  const tt = s.time_to   || '18:00';
+  const tf = s.time_from || DEFAULT_SCHEDULE.time_from;
+  const tt = s.time_to   || DEFAULT_SCHEDULE.time_to;
   const tz = s.timezone  || 'UTC';
   const enabled = !!s.enabled;
-  const td = (s.touch_delays && s.touch_delays.length === 4) ? s.touch_delays : DEFAULT_SCHEDULE.touch_delays;
+  // 26.10.2026: один фоллоу-ап через 3 дня по умолчанию; редактор принимает от 1 до 4 интервалов
+  const td = (s.touch_delays && s.touch_delays.length >= 1 && s.touch_delays.length <= 4) ? s.touch_delays : DEFAULT_SCHEDULE.touch_delays;
   return `
     <div class="card">
       <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
@@ -431,11 +432,11 @@ function scheduleEditorHTML(sch) {
     </div>
     <div class="card" style="margin-top:12px">
       <div style="font-weight:500">Интервалы цепочки касаний</div>
-      <div style="font-size:12px;color:var(--text-muted)">Через сколько дней после предыдущего уходит следующее сообщение тому же лиду. Ответил — остаток цепочки снимается.</div>
+      <div style="font-size:12px;color:var(--text-muted)">Через сколько дней после предыдущего уходит следующее сообщение тому же лиду. Нужен минимум один интервал, лишние оставь пустыми. Ответил — остаток цепочки снимается.</div>
       ${[2,3,4,5].map((n, i) => `
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
           <span style="flex:1;font-size:13px">${n}-е сообщение</span>
-          <input type="number" min="0" max="60" data-sch-touch="${i}" value="${td[i]}" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
+          <input type="number" min="0" max="60" data-sch-touch="${i}" value="${td[i] != null ? td[i] : ''}" placeholder="${i === 0 ? '' : '—'}" style="width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px">
           <span style="font-size:12px;color:var(--text-muted)">дн</span>
         </div>
       `).join('')}
@@ -446,22 +447,20 @@ function collectSchedule() {
   const enabled = document.getElementById('sch-enabled')?.checked;
   if (!document.getElementById('sch-body')) return null;
   const days = [];
-  let tf = '09:00', tt = '18:00';
+  let tf = DEFAULT_SCHEDULE.time_from, tt = DEFAULT_SCHEDULE.time_to;
   for (let i = 0; i < 7; i++) {
     days.push(document.querySelector(`[data-sch-day="${i}"]`)?.checked || false);
     if (i === 0) {
-      tf = document.querySelector(`[data-sch-tf="${i}"]`)?.value || '09:00';
-      tt = document.querySelector(`[data-sch-tt="${i}"]`)?.value || '18:00';
+      tf = document.querySelector(`[data-sch-tf="${i}"]`)?.value || DEFAULT_SCHEDULE.time_from;
+      tt = document.querySelector(`[data-sch-tt="${i}"]`)?.value || DEFAULT_SCHEDULE.time_to;
     }
   }
   // Если у первого дня изменили время — применяем ко всем (UI как у конкурента — единое окно, чекбоксы дней)
   // Но если бы были разные tf/tt по дням — мы это поддерживаем (берём с первого включённого)
   const tz = document.getElementById('sch-tz')?.value || 'UTC';
-  const touch_delays = [];
-  for (let i = 0; i < 4; i++) {
-    const v = parseInt(document.querySelector(`[data-sch-touch="${i}"]`)?.value, 10);
-    touch_delays.push(Number.isFinite(v) && v >= 0 ? v : DEFAULT_SCHEDULE.touch_delays[i]);
-  }
+  // от 1 до 4 интервалов: пустые поля пропускаем, ни одного — берём дефолт [3]
+  const touch_delays = GuruLib.normalizeTouchDelays(
+    [0, 1, 2, 3].map(i => document.querySelector(`[data-sch-touch="${i}"]`)?.value));
   return { enabled: !!enabled, days, time_from: tf, time_to: tt, timezone: tz, touch_delays };
 }
 
@@ -2005,6 +2004,10 @@ const screens = {
           `).join('')}
         </div>
         ` : ''}
+        <div style="display:flex;gap:6px;overflow-x:auto;padding:6px 8px 0;background:var(--bg);${(window.QUICK_REPLIES || []).length ? '' : 'border-top:1px solid var(--border)'}">
+          <button class="stage-chip" data-action="guru-ask-email" data-conv="${st.conv_id}" style="font-size:12px;flex:0 0 auto" title="Подставить просьбу прислать корпоративную почту">Запросить почту</button>
+          <button class="stage-chip" data-action="guru-trial-on" data-conv="${st.conv_id}" style="font-size:12px;flex:0 0 auto" title="Стадия Trial Activated и три фоллоу-апа на апрув">Доступ выдан</button>
+        </div>
         <div id="attach-status" class="muted small" style="display:none;padding:6px 10px;border-top:1px solid var(--border);background:var(--bg)"></div>
         <div id="attach-chip" class="attach-chip" style="display:none"></div>
         <div id="reply-bar" class="reply-bar" style="display:none"></div>
@@ -2540,6 +2543,21 @@ const screens = {
       const same = uname && (company === '@' + uname || company === uname);
       return `${same ? '' : `<b>${escape(company)}</b> `}${user}${fix}`;
     };
+    // Бейдж типа входящего + до трёх готовых фраз Кости + «Запросить почту» / «Доступ выдан» (26.10.2026).
+    // Классы те же, что у чипов списков и кнопок карточки: новой вёрстки нет.
+    const replyToolsHTML = (a) => {
+      const badge = GuruLib.replyKindBadge(a.reply_kind);
+      const phrases = GuruLib.quickPhrases(a);
+      const cut = (t) => t.length > 34 ? t.slice(0, 34) + '…' : t;
+      return `
+        <div class="guru-lists" style="padding:2px 0">
+          ${badge ? `<span class="guru-card-tag" title="Тип входящего">${escape(badge.label)}</span>` : ''}
+          ${phrases.map(t => `<button class="guru-list-chip" data-action="guru-quick" data-id="${a.id}" data-text="${escape(t)}" title="${escape(t)}">${escape(cut(t))}</button>`).join('')}
+          ${GuruLib.needsLlmButton(a) ? `<button class="btn sm ghost" data-action="guru-llm" data-id="${a.id}" title="Фразы не подошли: пусть модель напишет черновик">Черновик LLM</button>` : ''}
+          ${a.conv_id ? `<button class="btn sm ghost" data-action="guru-ask-email" data-id="${a.id}" data-lang="${escape(a.lang || '')}" title="Подставить в поле просьбу прислать корпоративную почту">Запросить почту</button>
+          <button class="btn sm ghost" data-action="guru-trial-on" data-conv="${a.conv_id}" title="Стадия Trial Activated и три фоллоу-апа на апрув">Доступ выдан</button>` : ''}
+        </div>`;
+    };
     const draftHTML = (a, opts = {}) => {
       const isReply = a.trigger === 'incoming_reply';
       const editable = a.status === 'pending' || a.status === 'queued';
@@ -2570,6 +2588,7 @@ const screens = {
         </div>
         ${badges ? `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:2px 0">${badges}</div>` : ''}
         ${isReply && a.intent ? `<div class="guru-card-intent"><span class="muted small">Входящее:</span> «${escape(a.intent.replace(/^Ответ на: «|»$/g,''))}»</div>` : ''}
+        ${isReply && a.status === 'pending' ? replyToolsHTML(a) : ''}
         ${a.monday_item_id ? `<div class="md-mini">Monday: ${escape(a.company || 'карточка лида')} <button class="md-mini-link" data-action="md-open" data-item="${escape(a.monday_item_id)}" title="Открыть карточку на борде">↗</button></div>` : ''}
         ${(a.asset_ids || (a.asset_id ? [a.asset_id] : [])).length ? `<div class="guru-card-attach">📎 ${(a.asset_ids || [a.asset_id]).length > 1 ? `${(a.asset_ids || []).length} файла уйдут альбомом` : 'файл уйдёт'} вместе с текстом ${(a.asset_ids || [a.asset_id]).map(x => `<button class="guru-attach-x" data-action="guru-detach" data-id="${a.id}" data-asset="${x}" title="Убрать этот файл">#${x} ✕</button>`).join(' ')}</div>` : ''}
         ${warn ? '<div class="guru-card-warn">⚠ ' + escape(warn.msg) + ': убери до отправки</div>' : ''}
@@ -2627,7 +2646,9 @@ const screens = {
     }
     const groupsSorted = [...listGroups.values()].sort((x, y) => y.maxId - x.maxId);
     let view = _guruView();
-    if (view !== 'all' && view !== 'chat' && !listGroups.has(view)) view = 'all';
+    if (view !== 'all' && view !== 'chat' && view !== 'waiting' && !listGroups.has(view)) view = 'all';
+    const waitingRows = Array.isArray(st?.waiting) ? st.waiting : [];
+    const noFeed = view === 'chat' || view === 'waiting';   // вместо ленты карточек — чат или список «Ждут»
     const activeKey = (view === 'all' && listGroups.size === 1) ? groupsSorted[0].key : view;
     // Под-сегменты: список (чипы первого ряда) × язык × категория борда × группа борда.
     // Фильтр — пересечение выбранного, счётчики чипов даёт бэкенд (guru.segments).
@@ -2638,7 +2659,9 @@ const screens = {
     const chipsHTML = `
       <div class="guru-lists" id="guru-lists">
         ${listGroups.size > 1 ? chip('all', 'Все', feedLive.length) : ''}
-        ${groupsSorted.map(g => chip(g.key, chipLabel(g.label), g.todo || '✓', g.label + (g.todo ? '' : ': всё в листе ожидания'))).join('')}
+        ${groupsSorted.map(g => chip(g.key, chipLabel(g.label), g.todo || '✓', g.label + (g.todo ? '' : ': всё в листе ожидания'))
+          + (g.key === 'replies' ? chip('waiting', 'Ждут', waitingRows.length, 'Диалоги, где последним написал лид: по возрасту') : '')).join('')}
+        ${groupsSorted.some(g => g.key === 'replies') ? '' : chip('waiting', 'Ждут', waitingRows.length, 'Диалоги, где последним написал лид: по возрасту')}
         ${listGroups.size === 0 ? chip('all', 'Черновики', 0) : ''}
         <span class="guru-lists-gap"></span>
         ${chip('chat', '💬 Чат', msgs.length || null, 'Задачи для Guru: «напиши @user…», «спроси X про цены»')}
@@ -2660,7 +2683,7 @@ const screens = {
     const segChips = SEG_DIMS.map(([dim]) => dimCounts(dim).map(([v, cnt]) =>
       `<button class="guru-list-chip ${seg[dim] === v ? 'active' : ''}" data-action="guru-seg" data-dim="${dim}" data-val="${escape(v)}" title="${escape(dim === 'lang' ? 'Язык черновика' : dim === 'category' ? 'Категория с борда' : 'Группа борда, откуда приехала карточка')}">${escape(segLabel(dim, v))} · ${cnt}</button>`
     ).join('')).join('');
-    const segChipsHTML = (view === 'chat' || !segChips) ? '' : `
+    const segChipsHTML = (noFeed || !segChips) ? '' : `
       <div class="guru-lists" id="guru-seg">
         ${segChips}
         ${Object.values(seg).some(Boolean) ? '<button class="guru-list-chip" data-action="guru-seg-clear" title="Снять фильтры сегмента">✕ сброс</button>' : ''}
@@ -2670,17 +2693,17 @@ const screens = {
     const bulkTargets = feed.filter(a => a.status === 'pending' && a.kind === 'send_message'
                                       && (a.touch_idx || 1) === 1 && !a.stale);
     const staleN = feed.filter(a => a.stale).length;
-    const one = _guruOneOn() && view !== 'chat' && feed.length > 0;
-    _guruFeedLen = view === 'chat' ? 0 : feed.length;
+    const one = _guruOneOn() && !noFeed && feed.length > 0;
+    _guruFeedLen = noFeed ? 0 : feed.length;
     if (one) _guruIdx = Math.min(Math.max(_guruIdx, 0), feed.length - 1);
     _guruOneId = one ? feed[_guruIdx].id : null;
-    const bulkHTML = view === 'chat' ? '' : `
+    const bulkHTML = noFeed ? '' : `
       <div style="display:flex;align-items:center;gap:8px;padding:0 10px 4px">
         ${bulkTargets.length ? `<button class="btn primary" style="flex:1;min-height:44px" data-action="guru-bulk" title="Весь отфильтрованный сегмент уходит в лист ожидания одним запросом">✓ Одобрить все ${bulkTargets.length}</button>` : ''}
         <button class="btn ghost" style="min-height:44px;min-width:44px" data-action="guru-one-toggle" title="${one ? 'Вернуться к ленте' : 'Режим «одна карточка на экран»: одобрил → следующая'}">${one ? '☰ лента' : '▭ по одной'}</button>
       </div>
       ${bulkTargets.length ? `<div class="muted small" style="padding:0 10px 6px">${escape(tailEtaText(bulkTargets.length, q))}${staleN ? ` · ${staleN} ${plural(staleN, 'протухший не войдёт', 'протухших не войдут', 'протухших не войдут')}` : ''}</div>` : ''}`;
-    const groupOf = view !== 'all' && view !== 'chat' ? listGroups.get(view) : null;
+    const groupOf = view !== 'all' && !noFeed ? listGroups.get(view) : null;
     const feedEmpty = groupOf && groupOf.total
       ? `в этом списке всё разобрано${groupOf.total ? `, ${groupOf.total} в листе ожидания` : ''}`
       : queued.length ? `черновики разобраны, ${queued.length} в листе ожидания` : 'черновиков нет';
@@ -2704,6 +2727,21 @@ const screens = {
           <div class="muted small" style="text-align:center;padding:6px 0">← / → листать · Enter в очередь · на телефоне свайп по карточке</div>
         </div>`
       : feed.map(a => draftHTML(a, { showList: view === 'all' })).join('');
+    // «Ждут»: диалоги, где последним написал лид; старые сверху, тап открывает диалог (26.10.2026)
+    const waitingHTML = !waitingRows.length
+      ? '<div class="guru-feed-empty">все ответы разобраны<br><span class="muted small">здесь появятся диалоги, где последним написал лид</span></div>'
+      : waitingRows.map(w => {
+          const name = w.lead_name || (w.lead_username ? '@' + w.lead_username : `Чат #${w.conv_id}`);
+          return `<div class="card" data-action="open-conv" data-id="${w.conv_id}" data-name="${escape(w.lead_name || '')}" data-uname="${escape(w.lead_username || '')}" style="cursor:pointer">
+            <div class="card-row">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:500;font-size:14px">${escape(name)} · <span style="color:var(--text-muted);font-weight:400">${escape(GuruLib.ageText(w.waiting_hours))}</span>${w.stage ? ` · <span style="color:var(--text-muted);font-weight:400">${escape(w.stage)}</span>` : ''}</div>
+                ${w.last_in ? `<div style="font-size:13px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escape(w.last_in)}</div>` : ''}
+              </div>
+              <div class="list-arrow">›</div>
+            </div>
+          </div>`;
+        }).join('');
     const chatHTML = `
         ${msgs.length === 0 && actions.length === 0 ? `
           <div class="empty"><div class="empty-ico" data-pix="ninja"></div>
@@ -2816,14 +2854,15 @@ const screens = {
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
           <span class="muted small">${headCount}</span>
         </div>
+        <div class="muted small guru-stats-line" id="guru-stats-line">${escape(GuruLib.templatesLine(st?.tplStats))}<br>${escape(GuruLib.lessonsLine(st?.lessons))}</div>
       </div>
       ${queueHTML}
       ${chipsHTML}
       ${segChipsHTML}
       ${bulkHTML}
-      ${view === 'chat' ? '' : validatorHTML}
+      ${noFeed ? '' : validatorHTML}
       <div class="guru-log" id="guru-log">
-        ${view === 'chat' ? chatHTML : feedHTML}
+        ${view === 'chat' ? chatHTML : view === 'waiting' ? waitingHTML : feedHTML}
       </div>
       ${view === 'chat' ? `
       <div class="guru-input-bar">
@@ -3550,25 +3589,33 @@ async function loadGuru(silent=false) {
     } catch {}
   }
   try {
-    const [h, settings, queue, segments, supply] = await Promise.all([
+    const [h, settings, queue, segments, supply, waiting, tplStats, lessons, qrAll] = await Promise.all([
       API.guru.history(150),
       API.guru.settings().catch(() => null),
       API.guru.queue().catch(() => null),
       API.guru.segments().then(r => r.segments).catch(() => []),
       // Эндпоинты автодолива строит таск 10: нет их — блок скрыт, ошибки в UI нет
       _supplyGone ? null : API.guru.supply.status().catch(() => { _supplyGone = true; return null; }),
+      // Воронка топ-10 (26.10.2026): сбой любого из четырёх не ломает экран, строка покажет «—»
+      API.guru.waiting().catch(() => null),
+      API.guru.templatesStats(30).catch(() => null),
+      API.guru.styleLessons().catch(() => null),
+      API.guru.quickReplies().catch(() => null),
     ]);
+    if (qrAll && Array.isArray(qrAll.items)) window.GURU_QR = qrAll.items;
     if (seq < _guruRenderedSeq) return;   // уже отрисовано более свежее состояние
     const qSig = queue ? `${queue.running === true ? 'run' : 'stop'}:${queue.worker_alive === false ? 'dead' : 'alive'}:${queue.total}:${queue.paused_days}/${queue.capacity_today}/${queue.runway_days}:${(queue.accounts||[]).map(a => `${a.sent_today}/${a.limit_today}:${a.status}:${a.next_eta_label||''}`).join(',')}:${(queue.items||[]).map(i => `${i.id}@${i.eta_label||''}`).join(',')}:${(queue.sent_recent||[]).map(x => x.id).join(',')}` : '';
     const segSig = (segments || []).map(s => `${s.key}:${s.count}/${s.stale}`).join(',');
     const supSig = supply ? `${supply.auto_refill}:${supply.runway_days}:${supply.stop_rule || ''}` : '';
+    const funnelSig = (waiting || []).map(w => `${w.conv_id}:${w.waiting_hours}`).join(',')
+                    + '/' + JSON.stringify(tplStats || null) + '/' + (lessons?.updated_at || '') + (lessons?.rules || []).length;
     const newHash = _hashGuru(h) + '|' + (settings?.default_mode || '') + '|' + qSig
-                  + '|' + segSig + '|' + supSig;
+                  + '|' + segSig + '|' + supSig + '|' + funnelSig;
     if (silent && newHash === _guruHash) return;   // ничего не изменилось — не дёргаем DOM
     _guruHash = newHash;
     _guruRenderedSeq = seq;
     // Чат листаем вниз к свежему при первом заходе; лента черновиков держит место, где ты стоял.
-    _renderGuruKeepInput({ messages: h.messages, actions: h.actions, settings, queue, segments, supply },
+    _renderGuruKeepInput({ messages: h.messages, actions: h.actions, settings, queue, segments, supply, waiting, tplStats, lessons },
                          !silent && _guruView() === 'chat' ? 'bottom' : 'keep');
   } catch (e) {
     if (seq < _guruRenderedSeq) return;
@@ -3592,6 +3639,68 @@ async function guruSend() {
     await API.guru.chat(text);
   } catch (e) { toast(`Ошибка: ${e.message}`); }
   loadGuru(true);
+}
+
+/** Тап по готовой фразе: текст в поле карточки и сразу автосохранение (26.10.2026). Дальше обычное «Ответить». */
+function guruQuick(id, text) {
+  const ta = document.getElementById(`guru-draft-${id}`);
+  if (!ta || !text) return;
+  ta.value = text;
+  _autoGrow(ta);
+  ta.focus();
+  guruAutosave(ta);
+}
+
+/** «Черновик LLM»: фразы не подошли, модель пишет текст в поле карточки. */
+async function guruLlmDraft(id, btn) {
+  if (btn?.disabled) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Пишу…'; }
+  try {
+    const r = await API.guru.llmDraft(id);
+    const a = (screenState.guru?.actions || []).find(x => x.id === id);
+    if (a) { a.draft_text = r.draft_text || ''; a.quick_only = false; }
+    const ta = document.getElementById(`guru-draft-${id}`);
+    if (ta) { ta.value = r.draft_text || ''; ta.defaultValue = ta.value; _autoGrow(ta); }
+    toast('Черновик готов');
+    loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = 'Черновик LLM'; } }
+}
+
+/** «Запросить почту»: готовая реплика Кости в поле (карточка Guru или ответ в Inbox), отправка обычной кнопкой. */
+function guruAskEmail(el) {
+  const items = window.GURU_QR || [];
+  const id = parseInt(el.dataset.id, 10);
+  let target, lang;
+  if (id) {
+    target = document.getElementById(`guru-draft-${id}`);
+    const a = (screenState.guru?.actions || []).find(x => x.id === id);
+    lang = el.dataset.lang || GuruLib.guessLang(a?.intent || '');
+  } else {
+    target = document.getElementById('reply-input');
+    const ins = (screenState.conv?.messages || []).filter(m => m.direction !== 'out');
+    lang = GuruLib.guessLang(ins.length ? ins[ins.length - 1].text : '');
+  }
+  const text = GuruLib.pickQuickText(items, 'ask_email', lang);
+  if (!target) return;
+  if (!text) { toast('Фразы «запросить почту» нет: проверь готовые фразы Guru'); return; }
+  target.value = text;
+  if (id) { _autoGrow(target); guruAutosave(target); } else _autoGrow?.(target);
+  target.focus();
+}
+
+const _trialBusy = new Set();
+/** «Доступ выдан»: стадия Trial Activated и три фоллоу-апа на апрув. */
+async function guruTrialOn(convId, btn) {
+  if (!convId || _trialBusy.has(convId)) return;
+  _trialBusy.add(convId);
+  try {
+    const r = await API.guru.trialActivated(convId);
+    const n = (r?.followup_ids || []).length;
+    toast(`✅ Доступ выдан${n ? `, ${n} ${plural(n, 'фоллоу-ап ждёт', 'фоллоу-апа ждут', 'фоллоу-апов ждут')} апрува` : ''}`);
+    if (currentScreen === 'guru') loadGuru(true);
+  } catch (e) { toast(`Ошибка: ${cleanErr(e)}`); }
+  finally { _trialBusy.delete(convId); }
 }
 
 const _approving = new Set();   // защита от двойного клика: второй тап слал лиду дубль
@@ -5767,6 +5876,10 @@ async function handleAction(action, el, e) {
     case 'guru-approve': guruApprove(parseInt(el.dataset.id, 10)); break;
     case 'guru-edit':    guruEdit(parseInt(el.dataset.id, 10)); break;
     case 'guru-reject':  guruReject(parseInt(el.dataset.id, 10)); break;
+    case 'guru-quick':   guruQuick(parseInt(el.dataset.id, 10), el.dataset.text || ''); break;
+    case 'guru-llm':     guruLlmDraft(parseInt(el.dataset.id, 10), el); break;
+    case 'guru-ask-email': guruAskEmail(el); break;
+    case 'guru-trial-on': guruTrialOn(parseInt(el.dataset.conv, 10), el); break;
     case 'guru-reject-do': guruRejectDo(parseInt(el.dataset.id, 10), el.dataset.reason || ''); break;
     case 'guru-skip':    guruSkip(parseInt(el.dataset.id, 10)); break;
     case 'guru-menu':    guruMenu(parseInt(el.dataset.id, 10)); break;

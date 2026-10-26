@@ -255,6 +255,13 @@ const API = {
     },
     // Глобальный выключатель рассылки листа ожидания (users.guru_outreach_running)
     queueRun:  (running)           => API.req('POST', '/api/guru/queue/run', { running: !!running }),
+    // Воронка топ-10 (26.10.2026): диалоги без ответа, счётчики шаблонов, уроки стиля, готовые фразы
+    waiting:        (limit=50)     => API.req('GET',  `/api/guru/waiting?limit=${limit}`),
+    templatesStats: (days=30)      => API.req('GET',  `/api/guru/templates/stats?days=${days}`),
+    styleLessons:   ()             => API.req('GET',  '/api/guru/style/lessons'),
+    llmDraft:       (id)           => API.req('POST', `/api/guru/actions/${id}/llm_draft`),
+    trialActivated: (conv_id)      => API.req('POST', `/api/guru/conv/${conv_id}/trial_activated`),
+    quickReplies:   ()             => API.req('GET',  '/api/guru/quick_replies'),
     setMode:   (conv_id, guru_mode)=> API.req('POST', `/api/guru/conv/${conv_id}/mode`, { guru_mode }),
     settings:  ()                  => API.req('GET',  '/api/guru/settings'),
     putSettings: (data)            => API.req('PUT',  '/api/guru/settings', data),
