@@ -3667,9 +3667,26 @@ async function guruLlmDraft(id, btn) {
   finally { if (btn) { btn.disabled = false; btn.textContent = 'Черновик LLM'; } }
 }
 
+/**
+ * Готовые фразы Кости. `loadGuru()` их кэширует в `window.GURU_QR`, но в Inbox можно
+ * зайти, не открыв экран Guru — тогда тянем сами (ревью ветки 26.10.2026: кнопка
+ * «Запросить почту» в свежей сессии говорила «фразы нет»).
+ */
+let _qrLoading = null;
+async function guruQuickRepliesCached() {
+  if (Array.isArray(window.GURU_QR) && window.GURU_QR.length) return window.GURU_QR;
+  if (!_qrLoading) {
+    _qrLoading = API.guru.quickReplies()
+      .then(r => { window.GURU_QR = Array.isArray(r?.items) ? r.items : []; return window.GURU_QR; })
+      .catch(() => [])
+      .finally(() => { _qrLoading = null; });
+  }
+  return _qrLoading;
+}
+
 /** «Запросить почту»: готовая реплика Кости в поле (карточка Guru или ответ в Inbox), отправка обычной кнопкой. */
-function guruAskEmail(el) {
-  const items = window.GURU_QR || [];
+async function guruAskEmail(el) {
+  const items = await guruQuickRepliesCached();
   const id = parseInt(el.dataset.id, 10);
   let target, lang;
   if (id) {
