@@ -2852,6 +2852,7 @@ const screens = {
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
+          <button class="mode-pill" data-action="open-trial-fu" title="Тексты трёх фоллоу-апов после выдачи trial">FU trial</button>
           <span class="muted small">${headCount}</span>
         </div>
         <div class="muted small guru-stats-line" id="guru-stats-line">${escape(GuruLib.templatesLine(st?.tplStats))}<br>${escape(GuruLib.lessonsLine(st?.lessons))}</div>
@@ -6058,6 +6059,61 @@ async function handleAction(action, el, e) {
       wrap.id = 'guru-settings-modal';
       wrap.innerHTML = html;
       document.body.appendChild(wrap);
+      break;
+    }
+    case 'open-trial-fu': {
+      // Редактор трёх фоллоу-апов после trial (+2/+5/+10 рабочих дней), RU и EN.
+      // Пока текста нет — лиду уйдёт заглушка «[впиши]», поэтому правим прямо здесь.
+      const qr = await API.guru.quickReplies().catch(() => null);
+      if (!qr) { toast('Не удалось загрузить фразы'); break; }
+      const have = {};
+      (qr.items || []).forEach(i => { if (i.kind.startsWith('trial_fu_')) have[`${i.kind}:${i.lang}`] = i.text; });
+      const days = { 1: '+2 рабочих дня', 2: '+5 рабочих дней', 3: '+10 рабочих дней' };
+      const rows = [1, 2, 3].map(n => `
+        <div class="trial-fu-row" style="margin-bottom:12px">
+          <div style="font-weight:500;font-size:14px;margin-bottom:4px">Фоллоу-ап ${n} <span class="muted small">· ${days[n]} после выдачи</span></div>
+          <textarea class="pixel-input" id="trial-fu-${n}-ru" rows="2" placeholder="RU — как прошёл trial?">${escape(have[`trial_fu_${n}:ru`] || '')}</textarea>
+          <textarea class="pixel-input" id="trial-fu-${n}-en" rows="2" style="margin-top:4px" placeholder="EN — how did the trial go?">${escape(have[`trial_fu_${n}:en`] || '')}</textarea>
+        </div>`).join('');
+      const html = `
+        <div class="modal-backdrop" data-action="close-modal">
+          <div class="modal-sheet" style="max-height:85vh;overflow:auto">
+            <div class="modal-title">Фоллоу-апы после trial</div>
+            <div class="muted small" style="margin:4px 0 12px">Пустое поле — фоллоу-ап на этом языке не ставится. Уже висящие фоллоу-апы с заглушкой получат новый текст.</div>
+            ${rows}
+            <div class="guru-save-hint" id="trial-fu-hint" style="min-height:16px"></div>
+            <button class="btn primary full" data-action="save-trial-fu">Сохранить</button>
+            <button class="btn ghost full" style="margin-top:8px" data-action="close-modal">Закрыть</button>
+          </div>
+        </div>`;
+      const wrap = document.createElement('div');
+      wrap.id = 'guru-settings-modal';
+      wrap.innerHTML = html;
+      document.body.appendChild(wrap);
+      break;
+    }
+    case 'save-trial-fu': {
+      const hint = document.getElementById('trial-fu-hint');
+      el.disabled = true;
+      try {
+        let touched = 0;
+        for (const n of [1, 2, 3]) {
+          const texts = {
+            ru: (document.getElementById(`trial-fu-${n}-ru`)?.value || '').trim(),
+            en: (document.getElementById(`trial-fu-${n}-en`)?.value || '').trim(),
+          };
+          const r = await API.guru.putQuickRepliesKind(`trial_fu_${n}`, texts);
+          touched += r.updated_pending || 0;
+        }
+        if (hint) hint.textContent = touched ? `сохранено · обновлено висящих: ${touched}` : 'сохранено';
+        toast('Фоллоу-апы сохранены');
+        const fresh = await API.guru.quickReplies().catch(() => null);
+        if (fresh && Array.isArray(fresh.items)) window.GURU_QR = fresh.items;
+      } catch (err) {
+        if (hint) hint.textContent = `ошибка: ${err.message}`;
+      } finally {
+        el.disabled = false;
+      }
       break;
     }
     case 'close-modal': {

@@ -262,6 +262,7 @@ const API = {
     llmDraft:       (id)           => API.req('POST', `/api/guru/actions/${id}/llm_draft`),
     trialActivated: (conv_id)      => API.req('POST', `/api/guru/conv/${conv_id}/trial_activated`),
     quickReplies:   ()             => API.req('GET',  '/api/guru/quick_replies'),
+    putQuickRepliesKind: (kind, texts) => API.req('PUT', `/api/guru/quick_replies/${encodeURIComponent(kind)}`, { texts }),
     setMode:   (conv_id, guru_mode)=> API.req('POST', `/api/guru/conv/${conv_id}/mode`, { guru_mode }),
     settings:  ()                  => API.req('GET',  '/api/guru/settings'),
     putSettings: (data)            => API.req('PUT',  '/api/guru/settings', data),
