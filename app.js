@@ -2852,7 +2852,6 @@ const screens = {
         <h2 data-action="toggle-guru-head" title="Скрыть/показать шапку">★ Guru</h2>
         <div class="guru-head-meta">
           <button class="mode-pill mode-${modeColor}" data-action="open-guru-settings" title="Настройки режима Guru">${modeShort}</button>
-          <button class="mode-pill" data-action="open-trial-fu" title="Тексты трёх фоллоу-апов после выдачи trial">FU trial</button>
           <span class="muted small">${headCount}</span>
         </div>
         <div class="muted small guru-stats-line" id="guru-stats-line">${escape(GuruLib.templatesLine(st?.tplStats))}<br>${escape(GuruLib.lessonsLine(st?.lessons))}</div>
@@ -2881,6 +2880,7 @@ const screens = {
       { action: 'goto-kb',          icon: 'brain',  title: 'База знаний',  sub: `${s.kb} ответов на вопросы / возражения`, color: 'pix-plum' },
       { action: 'goto-assets',      icon: 'paper',  title: 'Файлы',         sub: `${s.as} видео/фото/PDF — Guru приатачит`, color: 'pix-gold' },
       { action: 'goto-templates',   icon: 'spark',  title: 'Шаблоны кампаний', sub: `${s.tpl} готовых текстов для outreach`, color: 'pix-sky' },
+      { action: 'open-trial-fu',    icon: 'clock',  title: 'Фоллоу-апы после trial', sub: '3 текста RU/EN — +2 / +5 / +10 рабочих дней после выдачи', color: 'pix-gold' },
     ];
     return `
       <div class="screen">
