@@ -219,7 +219,7 @@ const API = {
     setStage: (id, stage)  => API.req('POST', `/api/monday/card/${id}/stage`, { stage }),
     setNext:  (id, date)   => API.req('POST', `/api/monday/card/${id}/next_touch`, { date }),
     note:     (id, body)   => API.req('POST', `/api/monday/card/${id}/note`, { body }),
-    toMine:   (id)         => API.req('POST', `/api/monday/card/${id}/to_mine`, {}),
+    toMine:   (id, convId) => API.req('POST', `/api/monday/card/${id}/to_mine`, { conv_id: convId || null }),
   },
 
   guru: {

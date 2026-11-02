@@ -4510,7 +4510,7 @@ function _mdRender(c) {
     <button class="btn sm ghost" data-action="md-next" data-days="7" title="Next Touch — через неделю">+7д</button>
     <input type="date" id="md-date" class="md-date" value="${escape(c.next_touch || '')}" title="Next Touch — любая дата">
     <button class="btn sm ghost" data-action="md-note" title="Комментарий в карточку">заметка</button>
-    ${c.group !== 'Мои' ? `<button class="btn sm ghost" data-action="md-mine" title="Горячий лид: перенести карточку во вкладку «Мои»">перенести в мои</button>` : ''}
+    ${c.group !== 'Мои' ? `<button class="btn sm ghost" data-action="md-mine" title="Горячий лид: карточка во вкладку «Мои», Guru по лиду останавливается, дальше ведёшь сам">перенести в мои</button>` : ''}
     <button class="btn sm ghost" data-action="md-open" data-item="${escape(c.item_id)}" title="Открыть карточку на борде">↗</button>`;
 }
 
@@ -5524,9 +5524,10 @@ async function handleAction(action, el, e) {
       if (!_mdCard?.item_id) return;
       el.disabled = true;
       try {
-        const r = await API.monday.toMine(_mdCard.item_id);
-        _mdCard.group = r?.group?.title || 'Мои'; _mdRender(_mdCard);
-        toast('Перенёс во вкладку «Мои»');
+        const convId = screenState.conv?.conv_id || null;
+        const r = await API.monday.toMine(_mdCard.item_id, convId);
+        _mdCard.group = 'Мои'; _mdRender(_mdCard);
+        toast(`В «Мои». Guru по лиду остановлен${r?.actions_dropped ? `, снято ${r.actions_dropped}` : ''}`);
       } catch (e) { el.disabled = false; toast(`Ошибка: ${e.message}`); }
       break;
     }
