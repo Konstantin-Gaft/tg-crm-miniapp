@@ -4510,6 +4510,7 @@ function _mdRender(c) {
     <button class="btn sm ghost" data-action="md-next" data-days="7" title="Next Touch — через неделю">+7д</button>
     <input type="date" id="md-date" class="md-date" value="${escape(c.next_touch || '')}" title="Next Touch — любая дата">
     <button class="btn sm ghost" data-action="md-note" title="Комментарий в карточку">заметка</button>
+    ${c.group !== 'Мои' ? `<button class="btn sm ghost" data-action="md-mine" title="Горячий лид: перенести карточку во вкладку «Мои»">перенести в мои</button>` : ''}
     <button class="btn sm ghost" data-action="md-open" data-item="${escape(c.item_id)}" title="Открыть карточку на борде">↗</button>`;
 }
 
@@ -5517,6 +5518,16 @@ async function handleAction(action, el, e) {
       if (!body || !body.trim()) return;
       try { await API.monday.note(_mdCard.item_id, body.trim()); toast('Записал в карточку'); }
       catch (e) { toast(`Ошибка: ${e.message}`); }
+      break;
+    }
+    case 'md-mine': {
+      if (!_mdCard?.item_id) return;
+      el.disabled = true;
+      try {
+        const r = await API.monday.toMine(_mdCard.item_id);
+        _mdCard.group = r?.group?.title || 'Мои'; _mdRender(_mdCard);
+        toast('Перенёс во вкладку «Мои»');
+      } catch (e) { el.disabled = false; toast(`Ошибка: ${e.message}`); }
       break;
     }
     // Исправить уже отправленное — правка уходит и в Telegram (окно 48 часов), и в базу
