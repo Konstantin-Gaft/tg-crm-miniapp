@@ -3696,8 +3696,7 @@ async function guruAskEmail(el) {
     lang = el.dataset.lang || GuruLib.guessLang(a?.intent || '');
   } else {
     target = document.getElementById('reply-input');
-    const ins = (screenState.conv?.messages || []).filter(m => m.direction !== 'out');
-    lang = GuruLib.guessLang(ins.length ? ins[ins.length - 1].text : '');
+    lang = GuruLib.convLang(screenState.conv?.messages || []);
   }
   const text = GuruLib.pickQuickText(items, 'ask_email', lang);
   if (!target) return;
